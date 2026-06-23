@@ -1,0 +1,27 @@
+# CCS / Eclipse generated build output
+Debug/
+Release/
+
+# C2000 compiler and linker outputs
+*.obj
+*.d
+*.d_raw
+*.map
+*.out
+*.hex
+*.x01
+*_linkInfo.xml
+ccsObjs.opt
+
+# Temporary and local editor files
+*.tmp
+*.bak
+*.log
+*.swp
+*.swo
+Thumbs.db
+Desktop.ini
+
+# Host test executable output
+Tests/*.exe
+Tests/*.obj

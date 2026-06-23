@@ -1,0 +1,311 @@
+#include <assert.h>
+#include <stdio.h>
+
+#include "Board_Gpio_Test.h"
+#include "Board_I2c_Test.h"
+#include "Board_Sci_Test.h"
+#include "Board_System_Test.h"
+#include "Board_Test.h"
+#include "Board_Pinmap.h"
+#include "Hpd_Test_Limits.h"
+
+static BoardTest_Result TestExecutor(BoardTest_U16 testId,
+                                     BoardTest_Record *record)
+{
+    if(testId == BOARD_TEST_ID_SYS_STARTUP)
+    {
+        record->measuredValue = 1.0F;
+        return BOARD_TEST_RESULT_PASS;
+    }
+
+    if(testId == BOARD_TEST_ID_I2C_RTC)
+    {
+        record->rawValue = 0UL;
+        return BOARD_TEST_RESULT_PASS;
+    }
+
+    if(testId == BOARD_TEST_ID_I2C_B_TMP116)
+    {
+        return BoardI2c_EvaluateTmp116Read(BOARD_I2C_STATUS_SUCCESS,
+                                           BOARD_I2C_TMP116_ADDR_MIN,
+                                           BOARD_I2C_TMP116_DEVICE_ID,
+                                           0x1900U,
+                                           record);
+    }
+
+    if(testId == BOARD_TEST_ID_SCI_HOST)
+    {
+        return BoardSci_EvaluateLoopbackStatus(
+            (BoardTest_U16)BOARD_SCI_LOOPBACK_EXPECTED_MASK,
+            BOARD_SCI_LOOPBACK_SCIA_PATTERN,
+            BOARD_SCI_LOOPBACK_SCIB_PATTERN,
+            record);
+    }
+
+    if(testId == BOARD_TEST_ID_SYS_CLOCK)
+    {
+        return BoardSystem_EvaluateMask(BOARD_SYSTEM_CLOCK_EXPECTED_MASK,
+                                        BOARD_SYSTEM_CLOCK_EXPECTED_MASK,
+                                        BOARD_TEST_ERROR_SYS_CLOCK,
+                                        record);
+    }
+
+    if(testId == BOARD_TEST_ID_SYS_TIMER)
+    {
+        return BoardSystem_EvaluateTimerDelta(1000UL, 900UL, record);
+    }
+
+    if(testId == BOARD_TEST_ID_SYS_WATCHDOG)
+    {
+        return BoardSystem_EvaluateMask(BOARD_SYSTEM_WATCHDOG_DISABLED,
+                                        BOARD_SYSTEM_WATCHDOG_DISABLED,
+                                        BOARD_TEST_ERROR_WATCHDOG_CFG,
+                                        record);
+    }
+
+    if(testId == BOARD_TEST_ID_RAM)
+    {
+        record->measuredValue = (float)BOARD_SYSTEM_RAM_WORD_COUNT;
+        return BOARD_TEST_RESULT_PASS;
+    }
+
+    if(testId == BOARD_TEST_ID_FLASH)
+    {
+        return BoardSystem_EvaluateMask(BOARD_SYSTEM_FLASH_EXPECTED_MASK,
+                                        BOARD_SYSTEM_FLASH_EXPECTED_MASK,
+                                        BOARD_TEST_ERROR_FLASH_CFG,
+                                        record);
+    }
+
+    if(testId == BOARD_TEST_ID_GPIO)
+    {
+        return BoardGpio_EvaluateProgramLedReadback(
+            BOARD_GPIO_LED_READBACK_MASK, record);
+    }
+
+    record->errorCode = BOARD_TEST_ERROR_UNSUPPORTED;
+    return BOARD_TEST_RESULT_NOT_SUPPORTED;
+}
+
+static void TestInitIsSafe(void)
+{
+    const BoardTest_Descriptor *descriptor;
+
+    BoardTest_Init();
+    assert(gBoardTestManager.mode == BOARD_TEST_MODE_IDLE);
+    assert(gBoardTestManager.activeTestId == BOARD_TEST_INVALID_ID);
+    assert(gBoardTestManager.pwmAllowed == 0U);
+    assert(gBoardTestManager.driverAllowed == 0U);
+    assert(BoardTest_GetCount() == BOARD_TEST_ITEM_COUNT);
+    descriptor = BoardTest_GetDescriptor(BOARD_TEST_ITEM_COUNT - 1U);
+    assert(descriptor != 0);
+    assert(descriptor->id == BOARD_TEST_ID_HPD_PHASE_2);
+    assert(BoardTest_GetDescriptor(BOARD_TEST_ITEM_COUNT) == 0);
+}
+
+static void TestSingleI2cPasses(void)
+{
+    const BoardTest_Record *record;
+
+    BoardTest_Init();
+    assert(BoardTest_StartSingle(BOARD_TEST_ID_I2C_RTC) ==
+           BOARD_TEST_RESULT_RUNNING);
+    BoardTest_Process(TestExecutor);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_I2C_RTC);
+    assert(record != 0);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    assert(gBoardTestManager.mode == BOARD_TEST_MODE_IDLE);
+}
+
+static void TestDangerousTestIsLocked(void)
+{
+    const BoardTest_Record *record;
+
+    BoardTest_Init();
+    assert(BoardTest_StartSingle(BOARD_TEST_ID_HPD_CURRENT_1) ==
+           BOARD_TEST_RESULT_SAFETY_LOCKED);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_HPD_CURRENT_1);
+    assert(record->result == BOARD_TEST_RESULT_SAFETY_LOCKED);
+    assert(record->errorCode == BOARD_TEST_ERROR_SAFETY_LOCK);
+    assert(gBoardTestManager.pwmAllowed == 0U);
+}
+
+static void TestAutoSequenceFinishes(void)
+{
+    BoardTest_U16 iteration;
+    const BoardTest_Record *record;
+
+    BoardTest_Init();
+    assert(BoardTest_StartAuto() == BOARD_TEST_RESULT_RUNNING);
+    for(iteration = 0U; iteration <= BOARD_TEST_ITEM_COUNT; iteration++)
+    {
+        BoardTest_Process(TestExecutor);
+    }
+
+    assert(gBoardTestManager.mode == BOARD_TEST_MODE_IDLE);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_SYS_STARTUP);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_SYS_CLOCK);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_SYS_TIMER);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_SYS_WATCHDOG);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_I2C_RTC);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_SCI_HOST);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_I2C_B_TMP116);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_RAM);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_FLASH);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_SYS_INTERRUPT);
+    assert(record->result == BOARD_TEST_RESULT_NOT_SUPPORTED);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_HPD_LINE_1);
+    assert(record->result == BOARD_TEST_RESULT_SKIP);
+}
+
+static void TestOutlineLimits(void)
+{
+    assert(HPD_BUS_VOLTAGE_MIN_V == 59.0F);
+    assert(HPD_BUS_VOLTAGE_MAX_V == 61.0F);
+    assert(HPD_LINE_VOLTAGE_MIN_V == 196.0F);
+    assert(HPD_LINE_VOLTAGE_MAX_V == 204.0F);
+    assert(HPD_NTC_REFERENCE_ERROR_MAX_C == 2.0F);
+    assert(HPD_PHASE_SEQUENCE_PULSE_US == 5UL);
+}
+
+static void TestConfirmedPinMap(void)
+{
+    assert(BOARD_DSP_F28377D == 1U);
+    assert(BOARD_PIN_I2CA_SDA == 42U);
+    assert(BOARD_PIN_I2CA_SCL == 43U);
+    assert(BOARD_PIN_I2CA_INT == 114U);
+    assert(BOARD_PIN_I2CB_SDA == 2U);
+    assert(BOARD_PIN_I2CB_SCL == 3U);
+    assert(BOARD_PIN_I2CB_INT == 6U);
+    assert(BOARD_PIN_SCIA_DIRECTION == 133U);
+    assert(BOARD_PIN_SCIA_TX == 135U);
+    assert(BOARD_PIN_SCIA_RX == 137U);
+    assert(BOARD_PIN_SCIB_DIRECTION == 11U);
+    assert(BOARD_PIN_SCIB_TX == 14U);
+    assert(BOARD_PIN_SCIB_RX == 15U);
+    assert(BOARD_PIN_CANB_RX == 13U);
+    assert(BOARD_PIN_CANB_TX == 12U);
+    assert(BOARD_PIN_EPWM_A(1U) == 145U);
+    assert(BOARD_PIN_EPWM_B(12U) == 168U);
+    assert(BOARD_PIN_EMIF2_XA(0U) == 98U);
+    assert(BOARD_PIN_EMIF2_XA(11U) == 109U);
+    assert(BOARD_PIN_EMIF2_XD(0U) == 68U);
+    assert(BOARD_PIN_EMIF2_XD(15U) == 53U);
+    assert(BOARD_PIN_EMIF1_XA(0U) == 38U);
+    assert(BOARD_PIN_EMIF1_XA(17U) == 90U);
+    assert(BOARD_PIN_EMIF1_XD(0U) == 85U);
+    assert(BOARD_PIN_EMIF1_XD(15U) == 69U);
+}
+
+static void TestProgramLedEvaluation(void)
+{
+    BoardTest_Record record;
+
+    record.errorCode = BOARD_TEST_ERROR_NONE;
+    assert(BoardGpio_EvaluateProgramLedReadback(
+               BOARD_GPIO_LED_READBACK_MASK, &record) ==
+           BOARD_TEST_RESULT_PASS);
+    assert(record.rawValue == BOARD_GPIO_LED_READBACK_MASK);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+
+    assert(BoardGpio_EvaluateProgramLedReadback(0x003EU, &record) ==
+           BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_GPIO_READBACK);
+}
+
+static void TestSystemMaskEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardSystem_EvaluateMask(BOARD_SYSTEM_CLOCK_EXPECTED_MASK,
+                                    BOARD_SYSTEM_CLOCK_EXPECTED_MASK,
+                                    BOARD_TEST_ERROR_SYS_CLOCK,
+                                    &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+
+    assert(BoardSystem_EvaluateMask(0UL,
+                                    BOARD_SYSTEM_CLOCK_EXPECTED_MASK,
+                                    BOARD_TEST_ERROR_SYS_CLOCK,
+                                    &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_SYS_CLOCK);
+}
+
+static void TestSystemTimerEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardSystem_EvaluateTimerDelta(1000UL, 900UL, &record) ==
+           BOARD_TEST_RESULT_PASS);
+    assert(record.rawValue == 100UL);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+
+    assert(BoardSystem_EvaluateTimerDelta(900UL, 1000UL, &record) ==
+           BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_SYS_TIMER);
+}
+
+static void TestTmp116Evaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardI2c_EvaluateTmp116Read(BOARD_I2C_STATUS_SUCCESS,
+                                       BOARD_I2C_TMP116_ADDR_MIN,
+                                       BOARD_I2C_TMP116_DEVICE_ID,
+                                       0x1900U,
+                                       &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x48111600UL);
+
+    assert(BoardI2c_EvaluateTmp116Read(0x0002U,
+                                       0U,
+                                       0U,
+                                       0U,
+                                       &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_I2C_B_TMP116);
+}
+
+static void TestSciLoopbackEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardSci_EvaluateLoopbackStatus(
+               (BoardTest_U16)BOARD_SCI_LOOPBACK_EXPECTED_MASK,
+               BOARD_SCI_LOOPBACK_SCIA_PATTERN,
+               BOARD_SCI_LOOPBACK_SCIB_PATTERN,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x00035AA5UL);
+
+    assert(BoardSci_EvaluateLoopbackStatus(
+               (BoardTest_U16)BOARD_SCI_LOOPBACK_SCIA_PASS,
+               BOARD_SCI_LOOPBACK_SCIA_PATTERN,
+               0U,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_SCI_LOOPBACK);
+}
+
+int main(void)
+{
+    TestInitIsSafe();
+    TestSingleI2cPasses();
+    TestDangerousTestIsLocked();
+    TestAutoSequenceFinishes();
+    TestOutlineLimits();
+    TestConfirmedPinMap();
+    TestProgramLedEvaluation();
+    TestSystemMaskEvaluation();
+    TestSystemTimerEvaluation();
+    TestTmp116Evaluation();
+    TestSciLoopbackEvaluation();
+    puts("board_test: all tests passed");
+    return 0;
+}

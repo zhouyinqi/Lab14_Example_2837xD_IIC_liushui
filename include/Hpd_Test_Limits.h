@@ -1,0 +1,34 @@
+#ifndef HPD_TEST_LIMITS_H
+#define HPD_TEST_LIMITS_H
+
+/* Limits from HPD module routine test outline CS-260621-A. */
+#define HPD_BUS_VOLTAGE_TARGET_V          60.0F
+#define HPD_BUS_VOLTAGE_MIN_V             59.0F
+#define HPD_BUS_VOLTAGE_MAX_V             61.0F
+
+#define HPD_LINE_VOLTAGE_TARGET_V         200.0F
+#define HPD_LINE_VOLTAGE_MIN_V            196.0F
+#define HPD_LINE_VOLTAGE_MAX_V            204.0F
+#define HPD_LINE_FREQUENCY_TARGET_HZ      1500.0F
+#define HPD_LINE_FREQUENCY_MIN_HZ         1485.0F
+#define HPD_LINE_FREQUENCY_MAX_HZ         1515.0F
+
+#define HPD_CURRENT_TARGET_A              200.0F
+#define HPD_CURRENT_MIN_A                 196.0F
+#define HPD_CURRENT_MAX_A                 204.0F
+#define HPD_CURRENT_FREQUENCY_TARGET_HZ   200.0F
+#define HPD_CURRENT_FREQUENCY_MIN_HZ      198.0F
+#define HPD_CURRENT_FREQUENCY_MAX_HZ      202.0F
+#define HPD_CURRENT_THD_MAX_PERCENT       3.0F
+
+#define HPD_NTC_CHANNEL_SPREAD_MAX_C      1.0F
+#define HPD_NTC_REFERENCE_ERROR_MAX_C     2.0F
+
+#define HPD_DRIVER_PWM_DURATION_MS        1000UL
+#define HPD_NTC_PWM_DURATION_MS           10000UL
+#define HPD_PHASE_SEQUENCE_PULSE_US       5UL
+
+#define HPD_BUS_TEST_CURRENT_LIMIT_A      5.0F
+#define HPD_CURRENT_TEST_CURRENT_LIMIT_A  50.0F
+
+#endif
