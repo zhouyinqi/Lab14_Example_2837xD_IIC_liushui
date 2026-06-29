@@ -1,4 +1,5 @@
 #include "F28x_Project.h"
+#include "Board_Can_Test.h"
 #include "Board_Gpio_Test.h"
 #include "Board_I2c_Test.h"
 #include "Board_Sci_Test.h"
@@ -55,6 +56,9 @@ BoardTest_Result BoardTest_TargetExecute(BoardTest_U16 testId,
 
         case BOARD_TEST_ID_SCI_HOST:
             return BoardSci_RunLoopbackTest(record);
+
+        case BOARD_TEST_ID_CAN_HOST:
+            return BoardCan_RunLoopbackTest(record);
 
         case BOARD_TEST_ID_GPIO:
             return BoardGpio_RunProgramLedTest(record);

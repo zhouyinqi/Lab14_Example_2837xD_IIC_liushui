@@ -17,6 +17,8 @@ ccsObjs.opt
 *.tmp
 *.bak
 *.log
+*.c.txt
+*.h.txt
 *.swp
 *.swo
 Thumbs.db

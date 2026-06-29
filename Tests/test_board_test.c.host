@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stdio.h>
 
+#include "Board_Can_Test.h"
 #include "Board_Gpio_Test.h"
 #include "Board_I2c_Test.h"
 #include "Board_Sci_Test.h"
@@ -39,6 +40,16 @@ static BoardTest_Result TestExecutor(BoardTest_U16 testId,
             (BoardTest_U16)BOARD_SCI_LOOPBACK_EXPECTED_MASK,
             BOARD_SCI_LOOPBACK_SCIA_PATTERN,
             BOARD_SCI_LOOPBACK_SCIB_PATTERN,
+            record);
+    }
+
+    if(testId == BOARD_TEST_ID_CAN_HOST)
+    {
+        return BoardCan_EvaluateLoopbackStatus(
+            (BoardTest_U16)BOARD_CAN_LOOPBACK_EXPECTED_MASK,
+            BOARD_CAN_LOOPBACK_TX_PATTERN,
+            BOARD_CAN_LOOPBACK_TX_PATTERN,
+            0U,
             record);
     }
 
@@ -154,6 +165,8 @@ static void TestAutoSequenceFinishes(void)
     record = BoardTest_GetRecord(BOARD_TEST_ID_I2C_RTC);
     assert(record->result == BOARD_TEST_RESULT_PASS);
     record = BoardTest_GetRecord(BOARD_TEST_ID_SCI_HOST);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_CAN_HOST);
     assert(record->result == BOARD_TEST_RESULT_PASS);
     record = BoardTest_GetRecord(BOARD_TEST_ID_I2C_B_TMP116);
     assert(record->result == BOARD_TEST_RESULT_PASS);
@@ -293,6 +306,28 @@ static void TestSciLoopbackEvaluation(void)
     assert(record.errorCode == BOARD_TEST_ERROR_SCI_LOOPBACK);
 }
 
+static void TestCanLoopbackEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardCan_EvaluateLoopbackStatus(
+               (BoardTest_U16)BOARD_CAN_LOOPBACK_EXPECTED_MASK,
+               BOARD_CAN_LOOPBACK_TX_PATTERN,
+               BOARD_CAN_LOOPBACK_TX_PATTERN,
+               0U,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+
+    assert(BoardCan_EvaluateLoopbackStatus(
+               (BoardTest_U16)(BOARD_CAN_LOOPBACK_EXPECTED_MASK &
+                               ~BOARD_CAN_LOOPBACK_DATA_MATCH),
+               BOARD_CAN_LOOPBACK_TX_PATTERN,
+               0UL,
+               0U,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_CAN_LOOPBACK);
+}
+
 int main(void)
 {
     TestInitIsSafe();
@@ -306,6 +341,7 @@ int main(void)
     TestSystemTimerEvaluation();
     TestTmp116Evaluation();
     TestSciLoopbackEvaluation();
+    TestCanLoopbackEvaluation();
     puts("board_test: all tests passed");
     return 0;
 }
