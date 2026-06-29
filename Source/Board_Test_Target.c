@@ -5,6 +5,7 @@
 #include "Board_Sci_Test.h"
 #include "Board_System_Test.h"
 #include "Board_Test_Target.h"
+#include "Hpd_Test_Limits.h"
 
 extern void Led_Test(void);
 extern volatile Uint16 RtcStatus;
@@ -13,6 +14,14 @@ volatile BoardTest_CommandMailbox gBoardTestCommandMailbox =
 {
     BOARD_TEST_COMMAND_NONE,
     BOARD_TEST_INVALID_ID,
+    BOARD_TEST_STAGE_BOARD_ONLY,
+    BOARD_TEST_HPD_INPUT_SOFTWARE_PHYSICAL,
+    HPD_BUS_VOLTAGE_TARGET_V,
+    HPD_LINE_VOLTAGE_TARGET_V,
+    HPD_LINE_FREQUENCY_TARGET_HZ,
+    HPD_CURRENT_TARGET_A,
+    HPD_CURRENT_FREQUENCY_TARGET_HZ,
+    25.0F,
     BOARD_TEST_RESULT_NOT_RUN
 };
 
@@ -78,10 +87,30 @@ void BoardTest_TargetPoll(void)
         gBoardTestCommandMailbox.lastCommandResult = BoardTest_StartAuto();
         gBoardTestCommandMailbox.command = BOARD_TEST_COMMAND_NONE;
     }
+    else if(command == BOARD_TEST_COMMAND_START_EXTERNAL_CONNECTED)
+    {
+        gBoardTestCommandMailbox.lastCommandResult =
+            BoardTest_StartStageAuto(BOARD_TEST_STAGE_EXTERNAL_CONNECTED);
+        gBoardTestCommandMailbox.command = BOARD_TEST_COMMAND_NONE;
+    }
+    else if(command == BOARD_TEST_COMMAND_START_HPD_INJECTION)
+    {
+        gBoardTestCommandMailbox.lastCommandResult =
+            BoardTest_StartHpdInjectionAuto(
+                gBoardTestCommandMailbox.hpdInputSource);
+        gBoardTestCommandMailbox.command = BOARD_TEST_COMMAND_NONE;
+    }
+    else if(command == BOARD_TEST_COMMAND_START_STAGE_AUTO)
+    {
+        gBoardTestCommandMailbox.lastCommandResult =
+            BoardTest_StartStageAuto(gBoardTestCommandMailbox.stage);
+        gBoardTestCommandMailbox.command = BOARD_TEST_COMMAND_NONE;
+    }
     else if(command == BOARD_TEST_COMMAND_START_SINGLE)
     {
         gBoardTestCommandMailbox.lastCommandResult =
-            BoardTest_StartSingle(gBoardTestCommandMailbox.testId);
+            BoardTest_StartSingleInStage(gBoardTestCommandMailbox.testId,
+                                         gBoardTestCommandMailbox.stage);
         gBoardTestCommandMailbox.command = BOARD_TEST_COMMAND_NONE;
     }
     else if(command == BOARD_TEST_COMMAND_STOP)

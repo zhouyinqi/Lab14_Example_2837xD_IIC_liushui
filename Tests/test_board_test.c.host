@@ -105,6 +105,9 @@ static void TestInitIsSafe(void)
     BoardTest_Init();
     assert(gBoardTestManager.mode == BOARD_TEST_MODE_IDLE);
     assert(gBoardTestManager.activeTestId == BOARD_TEST_INVALID_ID);
+    assert(gBoardTestManager.activeStage == BOARD_TEST_STAGE_BOARD_ONLY);
+    assert(gBoardTestManager.hpdInputSource ==
+           BOARD_TEST_HPD_INPUT_SOFTWARE_PHYSICAL);
     assert(gBoardTestManager.pwmAllowed == 0U);
     assert(gBoardTestManager.driverAllowed == 0U);
     assert(BoardTest_GetCount() == BOARD_TEST_ITEM_COUNT);
@@ -133,12 +136,40 @@ static void TestDangerousTestIsLocked(void)
     const BoardTest_Record *record;
 
     BoardTest_Init();
-    assert(BoardTest_StartSingle(BOARD_TEST_ID_HPD_CURRENT_1) ==
+    assert(BoardTest_StartSingleInStage(
+               BOARD_TEST_ID_HPD_CURRENT_1,
+               BOARD_TEST_STAGE_HPD_INJECTION) ==
            BOARD_TEST_RESULT_SAFETY_LOCKED);
     record = BoardTest_GetRecord(BOARD_TEST_ID_HPD_CURRENT_1);
     assert(record->result == BOARD_TEST_RESULT_SAFETY_LOCKED);
     assert(record->errorCode == BOARD_TEST_ERROR_SAFETY_LOCK);
     assert(gBoardTestManager.pwmAllowed == 0U);
+}
+
+static void TestSingleTestRespectsStage(void)
+{
+    const BoardTest_Record *record;
+
+    BoardTest_Init();
+    assert(BoardTest_StartSingleInStage(
+               BOARD_TEST_ID_CAN_HOST,
+               BOARD_TEST_STAGE_EXTERNAL_CONNECTED) ==
+           BOARD_TEST_RESULT_NOT_SUPPORTED);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_CAN_HOST);
+    assert(record->result == BOARD_TEST_RESULT_SKIP);
+    assert(record->errorCode == BOARD_TEST_ERROR_STAGE_MISMATCH);
+    assert(gBoardTestManager.mode == BOARD_TEST_MODE_IDLE);
+
+    assert(BoardTest_StartSingleInStage(
+               BOARD_TEST_ID_ETHERNET,
+               BOARD_TEST_STAGE_EXTERNAL_CONNECTED) ==
+           BOARD_TEST_RESULT_RUNNING);
+    assert(gBoardTestManager.activeStage ==
+           BOARD_TEST_STAGE_EXTERNAL_CONNECTED);
+    BoardTest_Process(TestExecutor);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_ETHERNET);
+    assert(record->result == BOARD_TEST_RESULT_NOT_SUPPORTED);
+    assert(record->errorCode == BOARD_TEST_ERROR_UNSUPPORTED);
 }
 
 static void TestAutoSequenceFinishes(void)
@@ -177,6 +208,70 @@ static void TestAutoSequenceFinishes(void)
     record = BoardTest_GetRecord(BOARD_TEST_ID_SYS_INTERRUPT);
     assert(record->result == BOARD_TEST_RESULT_NOT_SUPPORTED);
     record = BoardTest_GetRecord(BOARD_TEST_ID_HPD_LINE_1);
+    assert(record->result == BOARD_TEST_RESULT_SKIP);
+}
+
+static void TestExternalConnectedStage(void)
+{
+    BoardTest_U16 iteration;
+    const BoardTest_Record *record;
+
+    BoardTest_Init();
+    assert(BoardTest_StartStageAuto(
+               BOARD_TEST_STAGE_EXTERNAL_CONNECTED) ==
+           BOARD_TEST_RESULT_RUNNING);
+    assert(gBoardTestManager.activeStage ==
+           BOARD_TEST_STAGE_EXTERNAL_CONNECTED);
+    for(iteration = 0U; iteration <= BOARD_TEST_ITEM_COUNT; iteration++)
+    {
+        BoardTest_Process(TestExecutor);
+    }
+
+    assert(gBoardTestManager.mode == BOARD_TEST_MODE_IDLE);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_CAN_HOST);
+    assert(record->result == BOARD_TEST_RESULT_SKIP);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_GPIO);
+    assert(record->result == BOARD_TEST_RESULT_SKIP);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_CAN_EXTERNAL);
+    assert(record->result == BOARD_TEST_RESULT_NOT_SUPPORTED);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_ETHERNET);
+    assert(record->result == BOARD_TEST_RESULT_NOT_SUPPORTED);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_SPI_EXTERNAL);
+    assert(record->result == BOARD_TEST_RESULT_NOT_SUPPORTED);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_I2C_EXTERNAL);
+    assert(record->result == BOARD_TEST_RESULT_NOT_SUPPORTED);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_SCI_RS485_EXTERNAL);
+    assert(record->result == BOARD_TEST_RESULT_NOT_SUPPORTED);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_HPD_BUS_1);
+    assert(record->result == BOARD_TEST_RESULT_SKIP);
+}
+
+static void TestHpdInjectionStage(void)
+{
+    BoardTest_U16 iteration;
+    const BoardTest_Record *record;
+
+    BoardTest_Init();
+    assert(BoardTest_StartHpdInjectionAuto(
+               BOARD_TEST_HPD_INPUT_REAL_ADC) ==
+           BOARD_TEST_RESULT_RUNNING);
+    assert(gBoardTestManager.activeStage ==
+           BOARD_TEST_STAGE_HPD_INJECTION);
+    assert(gBoardTestManager.hpdInputSource ==
+           BOARD_TEST_HPD_INPUT_REAL_ADC);
+    for(iteration = 0U; iteration <= BOARD_TEST_ITEM_COUNT; iteration++)
+    {
+        BoardTest_Process(TestExecutor);
+    }
+
+    assert(gBoardTestManager.mode == BOARD_TEST_MODE_IDLE);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_CAN_HOST);
+    assert(record->result == BOARD_TEST_RESULT_SKIP);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_HPD_BUS_1);
+    assert(record->result == BOARD_TEST_RESULT_NOT_SUPPORTED);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_HPD_NTC_1);
+    assert(record->result == BOARD_TEST_RESULT_NOT_SUPPORTED);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_HPD_CURRENT_1);
     assert(record->result == BOARD_TEST_RESULT_SKIP);
 }
 
@@ -343,7 +438,10 @@ int main(void)
     TestInitIsSafe();
     TestSingleI2cPasses();
     TestDangerousTestIsLocked();
+    TestSingleTestRespectsStage();
     TestAutoSequenceFinishes();
+    TestExternalConnectedStage();
+    TestHpdInjectionStage();
     TestOutlineLimits();
     TestConfirmedPinMap();
     TestProgramLedEvaluation();

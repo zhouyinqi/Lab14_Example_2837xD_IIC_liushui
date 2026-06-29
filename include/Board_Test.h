@@ -13,6 +13,7 @@ typedef unsigned long BoardTest_U32;
 #define BOARD_TEST_ERROR_ABORTED    0x0001U
 #define BOARD_TEST_ERROR_UNSUPPORTED 0x0002U
 #define BOARD_TEST_ERROR_SAFETY_LOCK 0x0003U
+#define BOARD_TEST_ERROR_STAGE_MISMATCH 0x0004U
 #define BOARD_TEST_ERROR_GPIO_READBACK 0x0100U
 #define BOARD_TEST_ERROR_SYS_CLOCK   0x0110U
 #define BOARD_TEST_ERROR_SYS_TIMER   0x0111U
@@ -28,6 +29,10 @@ typedef unsigned long BoardTest_U32;
 #define BOARD_TEST_CAP_EXTERNAL_INJECT  0x0004U
 #define BOARD_TEST_CAP_TEST_BENCH       0x0008U
 
+#define BOARD_TEST_STAGE_MASK_BOARD_ONLY         0x0001U
+#define BOARD_TEST_STAGE_MASK_EXTERNAL_CONNECTED 0x0002U
+#define BOARD_TEST_STAGE_MASK_HPD_INJECTION      0x0004U
+
 typedef enum
 {
     BOARD_TEST_MODE_BOOT_SAFE = 0,
@@ -36,6 +41,19 @@ typedef enum
     BOARD_TEST_MODE_MANUAL,
     BOARD_TEST_MODE_FAULT
 } BoardTest_Mode;
+
+typedef enum
+{
+    BOARD_TEST_STAGE_BOARD_ONLY = 0,
+    BOARD_TEST_STAGE_EXTERNAL_CONNECTED,
+    BOARD_TEST_STAGE_HPD_INJECTION
+} BoardTest_Stage;
+
+typedef enum
+{
+    BOARD_TEST_HPD_INPUT_SOFTWARE_PHYSICAL = 0,
+    BOARD_TEST_HPD_INPUT_REAL_ADC
+} BoardTest_HpdInputSource;
 
 typedef enum
 {
@@ -76,6 +94,9 @@ typedef enum
     BOARD_TEST_ID_EMIF_EXTERNAL = 0x0304U,
     BOARD_TEST_ID_ETHERNET = 0x0305U,
     BOARD_TEST_ID_I2C_B_TMP116 = 0x0306U,
+    BOARD_TEST_ID_CAN_EXTERNAL = 0x0307U,
+    BOARD_TEST_ID_I2C_EXTERNAL = 0x0308U,
+    BOARD_TEST_ID_SCI_RS485_EXTERNAL = 0x0309U,
     BOARD_TEST_ID_HPD_ESTOP_DI3 = 0x1000U,
     BOARD_TEST_ID_HPD_INDICATOR_DO3 = 0x1001U,
     BOARD_TEST_ID_HPD_DRIVER_1 = 0x1100U,
@@ -92,7 +113,7 @@ typedef enum
     BOARD_TEST_ID_HPD_PHASE_2 = 0x1601U
 } BoardTest_Id;
 
-#define BOARD_TEST_ITEM_COUNT 31U
+#define BOARD_TEST_ITEM_COUNT 34U
 
 typedef struct
 {
@@ -100,6 +121,7 @@ typedef struct
     const char *name;
     BoardTest_U16 capabilities;
     BoardTest_U16 risk;
+    BoardTest_U16 stageMask;
     BoardTest_U16 enabledInAuto;
 } BoardTest_Descriptor;
 
@@ -119,6 +141,8 @@ typedef struct
     BoardTest_U16 mode;
     BoardTest_U16 activeTestId;
     BoardTest_U16 autoIndex;
+    BoardTest_U16 activeStage;
+    BoardTest_U16 hpdInputSource;
     BoardTest_U16 pwmAllowed;
     BoardTest_U16 driverAllowed;
     BoardTest_Record records[BOARD_TEST_ITEM_COUNT];
@@ -131,7 +155,11 @@ extern BoardTest_Manager gBoardTestManager;
 
 void BoardTest_Init(void);
 BoardTest_Result BoardTest_StartAuto(void);
+BoardTest_Result BoardTest_StartStageAuto(BoardTest_U16 stage);
+BoardTest_Result BoardTest_StartHpdInjectionAuto(BoardTest_U16 inputSource);
 BoardTest_Result BoardTest_StartSingle(BoardTest_U16 testId);
+BoardTest_Result BoardTest_StartSingleInStage(BoardTest_U16 testId,
+                                              BoardTest_U16 stage);
 void BoardTest_Stop(void);
 void BoardTest_Process(BoardTest_Executor executor);
 

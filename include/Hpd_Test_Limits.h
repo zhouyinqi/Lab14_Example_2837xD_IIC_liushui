@@ -2,9 +2,16 @@
 #define HPD_TEST_LIMITS_H
 
 /* Limits from HPD module routine test outline CS-260621-A. */
-#define HPD_BUS_VOLTAGE_TARGET_V          60.0F
-#define HPD_BUS_VOLTAGE_MIN_V             59.0F
-#define HPD_BUS_VOLTAGE_MAX_V             61.0F
+#define HPD_BUS_LOW_VOLTAGE_TARGET_V      60.0F
+#define HPD_BUS_LOW_VOLTAGE_MIN_V         59.0F
+#define HPD_BUS_LOW_VOLTAGE_MAX_V         61.0F
+#define HPD_BUS_HIGH_VOLTAGE_TARGET_V     300.0F
+#define HPD_BUS_HIGH_VOLTAGE_MIN_V        299.0F
+#define HPD_BUS_HIGH_VOLTAGE_MAX_V        301.0F
+
+#define HPD_BUS_VOLTAGE_TARGET_V          HPD_BUS_LOW_VOLTAGE_TARGET_V
+#define HPD_BUS_VOLTAGE_MIN_V             HPD_BUS_LOW_VOLTAGE_MIN_V
+#define HPD_BUS_VOLTAGE_MAX_V             HPD_BUS_LOW_VOLTAGE_MAX_V
 
 #define HPD_LINE_VOLTAGE_TARGET_V         200.0F
 #define HPD_LINE_VOLTAGE_MIN_V            196.0F
