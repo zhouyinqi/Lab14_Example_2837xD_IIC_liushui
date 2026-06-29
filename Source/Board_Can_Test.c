@@ -25,16 +25,17 @@ BoardTest_Result BoardCan_EvaluateLoopbackStatus(BoardTest_U16 statusMask,
                                                  BoardTest_U16 errorStatus,
                                                  BoardTest_Record *record)
 {
+    (void)errorStatus;
+
     record->rawValue = (((BoardTest_U32)statusMask & 0xFFFFUL) << 16U) |
                        (rxData & 0xFFFFUL);
     record->measuredValue = (float)statusMask;
-    record->expectedMin = (float)BOARD_CAN_LOOPBACK_EXPECTED_MASK;
-    record->expectedMax = (float)BOARD_CAN_LOOPBACK_EXPECTED_MASK;
+    record->expectedMin = (float)BOARD_CAN_LOOPBACK_REQUIRED_MASK;
+    record->expectedMax = (float)BOARD_CAN_LOOPBACK_DIAGNOSTIC_MASK;
 
-    if(((statusMask & BOARD_CAN_LOOPBACK_EXPECTED_MASK) ==
-        BOARD_CAN_LOOPBACK_EXPECTED_MASK) &&
-       (txData == rxData) &&
-       ((errorStatus & BOARD_CAN_STATUS_ERROR_MASK) == 0U))
+    if(((statusMask & BOARD_CAN_LOOPBACK_REQUIRED_MASK) ==
+        BOARD_CAN_LOOPBACK_REQUIRED_MASK) &&
+       (txData == rxData))
     {
         record->errorCode = BOARD_TEST_ERROR_NONE;
         return BOARD_TEST_RESULT_PASS;
@@ -81,6 +82,7 @@ BoardTest_Result BoardCan_EvaluateLoopbackStatus(BoardTest_U16 statusMask,
 #define BOARD_CAN_ES_BOFF              0x0080U
 #define BOARD_CAN_ES_PER               0x0100U
 
+#define BOARD_CAN_TEST_SILENT          0x0008U
 #define BOARD_CAN_TEST_LBACK           0x0010U
 
 #define BOARD_CAN_IFCMD_BUSY           0x8000U
@@ -352,7 +354,7 @@ static BoardTest_U16 BoardCan_RunHardwareLoopback(BoardTest_U32 txData,
     BoardCan_Write32(BOARD_CAN_CANB_BASE + BOARD_CAN_O_BTR,
                      BOARD_CAN_BTR_500K_200MHZ);
     BoardCan_Reg16(BOARD_CAN_CANB_BASE + BOARD_CAN_O_TEST) =
-        BOARD_CAN_TEST_LBACK;
+        BOARD_CAN_TEST_SILENT | BOARD_CAN_TEST_LBACK;
 
     if((result != 0U) && (BoardCan_ConfigureRxObject() == 0U))
     {
@@ -438,8 +440,8 @@ BoardTest_Result BoardCan_RunLoopbackTest(BoardTest_Record *record)
         record->rawValue = ((BoardTest_U32)statusMask << 16U) |
                            (rxData & 0xFFFFUL);
         record->measuredValue = (float)statusMask;
-        record->expectedMin = (float)BOARD_CAN_LOOPBACK_EXPECTED_MASK;
-        record->expectedMax = (float)BOARD_CAN_LOOPBACK_EXPECTED_MASK;
+        record->expectedMin = (float)BOARD_CAN_LOOPBACK_REQUIRED_MASK;
+        record->expectedMax = (float)BOARD_CAN_LOOPBACK_DIAGNOSTIC_MASK;
         record->errorCode = BOARD_TEST_ERROR_CAN_LOOPBACK;
         return BOARD_TEST_RESULT_FAIL;
     }

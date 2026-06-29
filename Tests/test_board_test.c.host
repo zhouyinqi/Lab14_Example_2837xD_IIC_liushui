@@ -319,6 +319,16 @@ static void TestCanLoopbackEvaluation(void)
     assert(record.errorCode == BOARD_TEST_ERROR_NONE);
 
     assert(BoardCan_EvaluateLoopbackStatus(
+               (BoardTest_U16)BOARD_CAN_LOOPBACK_REQUIRED_MASK,
+               BOARD_CAN_LOOPBACK_TX_PATTERN,
+               BOARD_CAN_LOOPBACK_TX_PATTERN,
+               0x01E0U,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.expectedMin == (float)BOARD_CAN_LOOPBACK_REQUIRED_MASK);
+    assert(record.expectedMax == (float)BOARD_CAN_LOOPBACK_DIAGNOSTIC_MASK);
+
+    assert(BoardCan_EvaluateLoopbackStatus(
                (BoardTest_U16)(BOARD_CAN_LOOPBACK_EXPECTED_MASK &
                                ~BOARD_CAN_LOOPBACK_DATA_MATCH),
                BOARD_CAN_LOOPBACK_TX_PATTERN,
