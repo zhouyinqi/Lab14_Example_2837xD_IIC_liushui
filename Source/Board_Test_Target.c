@@ -3,6 +3,7 @@
 #include "Board_Gpio_Test.h"
 #include "Board_I2c_Test.h"
 #include "Board_Sci_Test.h"
+#include "Board_Spi_Test.h"
 #include "Board_System_Test.h"
 #include "Board_Test_Target.h"
 #include "Hpd_Test_Limits.h"
@@ -68,6 +69,15 @@ BoardTest_Result BoardTest_TargetExecute(BoardTest_U16 testId,
 
         case BOARD_TEST_ID_CAN_HOST:
             return BoardCan_RunLoopbackTest(record);
+
+        case BOARD_TEST_ID_SPIA_INTERNAL:
+            return BoardSpi_RunSpiaLoopbackTest(record);
+
+        case BOARD_TEST_ID_SPIB_INTERNAL:
+            return BoardSpi_RunSpibLoopbackTest(record);
+
+        case BOARD_TEST_ID_SPIC_INTERNAL:
+            return BoardSpi_RunSpicLoopbackTest(record);
 
         case BOARD_TEST_ID_GPIO:
             return BoardGpio_RunProgramLedTest(record);

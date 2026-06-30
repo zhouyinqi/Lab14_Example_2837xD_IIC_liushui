@@ -5,6 +5,7 @@
 #include "Board_Gpio_Test.h"
 #include "Board_I2c_Test.h"
 #include "Board_Sci_Test.h"
+#include "Board_Spi_Test.h"
 #include "Board_System_Test.h"
 #include "Board_Test.h"
 #include "Board_Pinmap.h"
@@ -50,6 +51,33 @@ static BoardTest_Result TestExecutor(BoardTest_U16 testId,
             BOARD_CAN_LOOPBACK_TX_PATTERN,
             BOARD_CAN_LOOPBACK_TX_PATTERN,
             0U,
+            record);
+    }
+
+    if(testId == BOARD_TEST_ID_SPIA_INTERNAL)
+    {
+        return BoardSpi_EvaluateLoopbackStatus(
+            BOARD_SPI_LOOPBACK_REQUIRED_MASK,
+            BOARD_SPI_LOOPBACK_SPIA_PATTERN,
+            BOARD_SPI_LOOPBACK_SPIA_PATTERN,
+            record);
+    }
+
+    if(testId == BOARD_TEST_ID_SPIB_INTERNAL)
+    {
+        return BoardSpi_EvaluateLoopbackStatus(
+            BOARD_SPI_LOOPBACK_REQUIRED_MASK,
+            BOARD_SPI_LOOPBACK_SPIB_PATTERN,
+            BOARD_SPI_LOOPBACK_SPIB_PATTERN,
+            record);
+    }
+
+    if(testId == BOARD_TEST_ID_SPIC_INTERNAL)
+    {
+        return BoardSpi_EvaluateLoopbackStatus(
+            BOARD_SPI_LOOPBACK_REQUIRED_MASK,
+            BOARD_SPI_LOOPBACK_SPIC_PATTERN,
+            BOARD_SPI_LOOPBACK_SPIC_PATTERN,
             record);
     }
 
@@ -199,6 +227,12 @@ static void TestAutoSequenceFinishes(void)
     assert(record->result == BOARD_TEST_RESULT_PASS);
     record = BoardTest_GetRecord(BOARD_TEST_ID_CAN_HOST);
     assert(record->result == BOARD_TEST_RESULT_PASS);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_SPIA_INTERNAL);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_SPIB_INTERNAL);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_SPIC_INTERNAL);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
     record = BoardTest_GetRecord(BOARD_TEST_ID_I2C_B_TMP116);
     assert(record->result == BOARD_TEST_RESULT_PASS);
     record = BoardTest_GetRecord(BOARD_TEST_ID_RAM);
@@ -302,6 +336,18 @@ static void TestConfirmedPinMap(void)
     assert(BOARD_PIN_SCIB_RX == 15U);
     assert(BOARD_PIN_CANB_RX == 13U);
     assert(BOARD_PIN_CANB_TX == 12U);
+    assert(BOARD_PIN_SPIA_SIMO == 16U);
+    assert(BOARD_PIN_SPIA_SOMI == 17U);
+    assert(BOARD_PIN_SPIA_CLK == 18U);
+    assert(BOARD_PIN_SPIA_CS == 19U);
+    assert(BOARD_PIN_SPIB_SIMO == 24U);
+    assert(BOARD_PIN_SPIB_SOMI == 25U);
+    assert(BOARD_PIN_SPIB_CLK == 26U);
+    assert(BOARD_PIN_SPIB_CS == 27U);
+    assert(BOARD_PIN_SPIC_SIMO == 122U);
+    assert(BOARD_PIN_SPIC_SOMI == 123U);
+    assert(BOARD_PIN_SPIC_CLK == 124U);
+    assert(BOARD_PIN_SPIC_FLASH_CS == 125U);
     assert(BOARD_PIN_EPWM_A(1U) == 145U);
     assert(BOARD_PIN_EPWM_B(12U) == 168U);
     assert(BOARD_PIN_EMIF2_XA(0U) == 98U);
@@ -433,6 +479,27 @@ static void TestCanLoopbackEvaluation(void)
     assert(record.errorCode == BOARD_TEST_ERROR_CAN_LOOPBACK);
 }
 
+static void TestSpiLoopbackEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardSpi_EvaluateLoopbackStatus(
+               BOARD_SPI_LOOPBACK_REQUIRED_MASK,
+               BOARD_SPI_LOOPBACK_SPIA_PATTERN,
+               BOARD_SPI_LOOPBACK_SPIA_PATTERN,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x001FA55AUL);
+
+    assert(BoardSpi_EvaluateLoopbackStatus(
+               (BoardTest_U16)(BOARD_SPI_LOOPBACK_REQUIRED_MASK &
+                               ~BOARD_SPI_LOOPBACK_RX_MATCH),
+               BOARD_SPI_LOOPBACK_SPIB_PATTERN,
+               0U,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_SPI_LOOPBACK);
+}
+
 int main(void)
 {
     TestInitIsSafe();
@@ -450,6 +517,7 @@ int main(void)
     TestTmp116Evaluation();
     TestSciLoopbackEvaluation();
     TestCanLoopbackEvaluation();
+    TestSpiLoopbackEvaluation();
     puts("board_test: all tests passed");
     return 0;
 }
