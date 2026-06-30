@@ -130,6 +130,16 @@ static BoardTest_Result TestExecutor(BoardTest_U16 testId,
             record);
     }
 
+    if(testId == BOARD_TEST_ID_ETHERNET_TCP_STABILITY)
+    {
+        return BoardEthernet_EvaluateW5300TcpStabilityStatus(
+            BOARD_ETHERNET_TCP_STABILITY_REQUIRED_MASK,
+            0x1710U,
+            5U,
+            5U,
+            record);
+    }
+
     if(testId == BOARD_TEST_ID_SPIA_INTERNAL)
     {
         return BoardSpi_EvaluateLoopbackStatus(
@@ -217,7 +227,7 @@ static void TestInitIsSafe(void)
     assert(BoardTest_GetCount() == BOARD_TEST_ITEM_COUNT);
     descriptor = BoardTest_GetDescriptor(BOARD_TEST_ITEM_COUNT - 1U);
     assert(descriptor != 0);
-    assert(descriptor->id == BOARD_TEST_ID_ETHERNET_TCP_ECHO);
+    assert(descriptor->id == BOARD_TEST_ID_ETHERNET_TCP_STABILITY);
     assert(BoardTest_GetDescriptor(BOARD_TEST_ITEM_COUNT) == 0);
 }
 
@@ -357,6 +367,8 @@ static void TestExternalConnectedStage(void)
     record = BoardTest_GetRecord(BOARD_TEST_ID_ETHERNET_TCP_LINK);
     assert(record->result == BOARD_TEST_RESULT_SKIP);
     record = BoardTest_GetRecord(BOARD_TEST_ID_ETHERNET_TCP_ECHO);
+    assert(record->result == BOARD_TEST_RESULT_SKIP);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_ETHERNET_TCP_STABILITY);
     assert(record->result == BOARD_TEST_RESULT_SKIP);
     record = BoardTest_GetRecord(BOARD_TEST_ID_SPI_EXTERNAL);
     assert(record->result == BOARD_TEST_RESULT_NOT_SUPPORTED);
@@ -769,6 +781,30 @@ static void TestEthernetTcpEchoEvaluation(void)
     assert(record.errorCode == BOARD_TEST_ERROR_ETHERNET_TCP_ECHO);
 }
 
+static void TestEthernetTcpStabilityEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardEthernet_EvaluateW5300TcpStabilityStatus(
+               BOARD_ETHERNET_TCP_STABILITY_REQUIRED_MASK,
+               0x1710U,
+               5U,
+               5U,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x03FF1705UL);
+
+    assert(BoardEthernet_EvaluateW5300TcpStabilityStatus(
+               (BoardTest_U16)
+               (BOARD_ETHERNET_TCP_STABILITY_REQUIRED_MASK &
+                ~BOARD_ETHERNET_TCP_STABILITY_TARGET_REACHED),
+               0x1710U,
+               4U,
+               5U,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_ETHERNET_TCP_STABILITY);
+}
+
 int main(void)
 {
     TestInitIsSafe();
@@ -794,6 +830,7 @@ int main(void)
     TestEthernetSocketEvaluation();
     TestEthernetTcpLinkEvaluation();
     TestEthernetTcpEchoEvaluation();
+    TestEthernetTcpStabilityEvaluation();
     puts("board_test: all tests passed");
     return 0;
 }

@@ -98,6 +98,32 @@ typedef enum
 #define BOARD_ETHERNET_TCP_ECHO_DIAGNOSTIC_MASK \
     BOARD_ETHERNET_TCP_ECHO_REQUIRED_MASK
 
+#define BOARD_ETHERNET_TCP_STABILITY_BACKEND_EMIF  0x0001U
+#define BOARD_ETHERNET_TCP_STABILITY_COMMON_READY  0x0002U
+#define BOARD_ETHERNET_TCP_STABILITY_LISTEN        0x0004U
+#define BOARD_ETHERNET_TCP_STABILITY_ESTABLISHED   0x0008U
+#define BOARD_ETHERNET_TCP_STABILITY_RX_AVAILABLE  0x0010U
+#define BOARD_ETHERNET_TCP_STABILITY_RX_MATCH      0x0020U
+#define BOARD_ETHERNET_TCP_STABILITY_TX_FREE       0x0040U
+#define BOARD_ETHERNET_TCP_STABILITY_TX_SENT       0x0080U
+#define BOARD_ETHERNET_TCP_STABILITY_TARGET_REACHED 0x0100U
+#define BOARD_ETHERNET_TCP_STABILITY_CLOSE_CLOSED  0x0200U
+
+#define BOARD_ETHERNET_TCP_STABILITY_REQUIRED_MASK \
+    (BOARD_ETHERNET_TCP_STABILITY_BACKEND_EMIF |   \
+     BOARD_ETHERNET_TCP_STABILITY_COMMON_READY |   \
+     BOARD_ETHERNET_TCP_STABILITY_LISTEN |         \
+     BOARD_ETHERNET_TCP_STABILITY_ESTABLISHED |    \
+     BOARD_ETHERNET_TCP_STABILITY_RX_AVAILABLE |   \
+     BOARD_ETHERNET_TCP_STABILITY_RX_MATCH |       \
+     BOARD_ETHERNET_TCP_STABILITY_TX_FREE |        \
+     BOARD_ETHERNET_TCP_STABILITY_TX_SENT |        \
+     BOARD_ETHERNET_TCP_STABILITY_TARGET_REACHED | \
+     BOARD_ETHERNET_TCP_STABILITY_CLOSE_CLOSED)
+
+#define BOARD_ETHERNET_TCP_STABILITY_DIAGNOSTIC_MASK \
+    BOARD_ETHERNET_TCP_STABILITY_REQUIRED_MASK
+
 typedef struct
 {
     volatile BoardTest_U16 backend;
@@ -148,10 +174,29 @@ typedef struct
     volatile BoardTest_U16 closedStatus;
 } BoardEthernet_TcpEchoSnapshot;
 
+typedef struct
+{
+    volatile BoardTest_U16 backend;
+    volatile BoardTest_U16 statusMask;
+    volatile BoardTest_U16 listenStatus;
+    volatile BoardTest_U16 connectedStatus;
+    volatile BoardTest_U16 rxSize;
+    volatile BoardTest_U16 rxFrameLength;
+    volatile BoardTest_U16 rxWord0;
+    volatile BoardTest_U16 rxWord1;
+    volatile BoardTest_U16 txFreeLow;
+    volatile BoardTest_U16 sendStatus;
+    volatile BoardTest_U16 closedStatus;
+    volatile BoardTest_U16 passCount;
+    volatile BoardTest_U16 targetCount;
+} BoardEthernet_TcpStabilitySnapshot;
+
 extern volatile BoardEthernet_BasicSnapshot gBoardEthernetBasicSnapshot;
 extern volatile BoardEthernet_SocketSnapshot gBoardEthernetSocketSnapshot;
 extern volatile BoardEthernet_TcpLinkSnapshot gBoardEthernetTcpLinkSnapshot;
 extern volatile BoardEthernet_TcpEchoSnapshot gBoardEthernetTcpEchoSnapshot;
+extern volatile BoardEthernet_TcpStabilitySnapshot
+    gBoardEthernetTcpStabilitySnapshot;
 
 BoardTest_Result BoardEthernet_EvaluateW5300BasicStatus(
     BoardTest_U16 statusMask,
@@ -187,13 +232,23 @@ BoardTest_Result BoardEthernet_EvaluateW5300TcpEchoStatus(
     BoardTest_U16 txFreeLow,
     BoardTest_Record *record);
 
+BoardTest_Result BoardEthernet_EvaluateW5300TcpStabilityStatus(
+    BoardTest_U16 statusMask,
+    BoardTest_U16 connectedStatus,
+    BoardTest_U16 passCount,
+    BoardTest_U16 targetCount,
+    BoardTest_Record *record);
+
 #ifndef BOARD_TEST_HOST
 BoardTest_Result BoardEthernet_RunW5300BasicTest(BoardTest_Record *record);
 BoardTest_Result BoardEthernet_RunW5300SocketTest(BoardTest_Record *record);
 BoardTest_Result BoardEthernet_RunW5300TcpLinkTest(BoardTest_Record *record);
 BoardTest_Result BoardEthernet_RunW5300TcpEchoTest(BoardTest_Record *record);
+BoardTest_Result BoardEthernet_RunW5300TcpStabilityTest(
+    BoardTest_Record *record);
 void BoardEthernet_AbortW5300TcpLinkTest(void);
 void BoardEthernet_AbortW5300TcpEchoTest(void);
+void BoardEthernet_AbortW5300TcpStabilityTest(void);
 #endif
 
 #ifdef __cplusplus
