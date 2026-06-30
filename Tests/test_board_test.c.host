@@ -7,6 +7,7 @@
 #include "Board_I2c_Test.h"
 #include "Board_Sci_Test.h"
 #include "Board_Spi_Test.h"
+#include "Board_Pwm_Test.h"
 #include "Board_System_Test.h"
 #include "Board_Test.h"
 #include "Board_Pinmap.h"
@@ -60,6 +61,15 @@ static BoardTest_Result TestExecutor(BoardTest_U16 testId,
         return BoardAdc_EvaluateBasicSample(
             BOARD_ADC_BASIC_STATUS_REQUIRED_MASK,
             2048U,
+            record);
+    }
+
+    if(testId == BOARD_TEST_ID_PWM_BASIC)
+    {
+        return BoardPwm_EvaluateSafetyStatus(
+            BOARD_PWM_SAFE_REQUIRED_MASK,
+            BOARD_EPWM_PAIR_COUNT,
+            0U,
             record);
     }
 
@@ -238,6 +248,8 @@ static void TestAutoSequenceFinishes(void)
     assert(record->result == BOARD_TEST_RESULT_PASS);
     record = BoardTest_GetRecord(BOARD_TEST_ID_ADC_BASIC);
     assert(record->result == BOARD_TEST_RESULT_PASS);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_PWM_BASIC);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
     record = BoardTest_GetRecord(BOARD_TEST_ID_SPIA_INTERNAL);
     assert(record->result == BOARD_TEST_RESULT_PASS);
     record = BoardTest_GetRecord(BOARD_TEST_ID_SPIB_INTERNAL);
@@ -363,6 +375,7 @@ static void TestConfirmedPinMap(void)
     assert(BOARD_PIN_SPIC_FLASH_CS == 125U);
     assert(BOARD_PIN_EPWM_A(1U) == 145U);
     assert(BOARD_PIN_EPWM_B(12U) == 168U);
+    assert(BOARD_EPWM_PAIR_COUNT == 12U);
     assert(BOARD_PIN_EMIF2_XA(0U) == 98U);
     assert(BOARD_PIN_EMIF2_XA(11U) == 109U);
     assert(BOARD_PIN_EMIF2_XD(0U) == 68U);
@@ -544,6 +557,28 @@ static void TestSpiLoopbackEvaluation(void)
     assert(record.errorCode == BOARD_TEST_ERROR_SPI_LOOPBACK);
 }
 
+static void TestPwmSafetyEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardPwm_EvaluateSafetyStatus(
+               BOARD_PWM_SAFE_REQUIRED_MASK,
+               BOARD_EPWM_PAIR_COUNT,
+               0U,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x00FF0C00UL);
+    assert(record.measuredValue == (float)BOARD_PWM_SAFE_REQUIRED_MASK);
+
+    assert(BoardPwm_EvaluateSafetyStatus(
+               (BoardTest_U16)(BOARD_PWM_SAFE_REQUIRED_MASK &
+                               ~BOARD_PWM_SAFE_FORCE_LOW),
+               BOARD_EPWM_PAIR_COUNT,
+               1U,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_PWM_SAFE_CFG);
+}
+
 int main(void)
 {
     TestInitIsSafe();
@@ -563,6 +598,7 @@ int main(void)
     TestCanLoopbackEvaluation();
     TestAdcBasicEvaluation();
     TestSpiLoopbackEvaluation();
+    TestPwmSafetyEvaluation();
     puts("board_test: all tests passed");
     return 0;
 }

@@ -3,6 +3,7 @@
 #include "Board_Can_Test.h"
 #include "Board_Gpio_Test.h"
 #include "Board_I2c_Test.h"
+#include "Board_Pwm_Test.h"
 #include "Board_Sci_Test.h"
 #include "Board_Spi_Test.h"
 #include "Board_System_Test.h"
@@ -85,6 +86,9 @@ BoardTest_Result BoardTest_TargetExecute(BoardTest_U16 testId,
 
         case BOARD_TEST_ID_ADC_BASIC:
             return BoardAdc_RunBasicSampleTest(record);
+
+        case BOARD_TEST_ID_PWM_BASIC:
+            return BoardPwm_RunSafetyConfigTest(record);
 
         default:
             record->errorCode = BOARD_TEST_ERROR_UNSUPPORTED;
