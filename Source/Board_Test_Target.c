@@ -101,6 +101,9 @@ BoardTest_Result BoardTest_TargetExecute(BoardTest_U16 testId,
         case BOARD_TEST_ID_ETHERNET_SOCKET:
             return BoardEthernet_RunW5300SocketTest(record);
 
+        case BOARD_TEST_ID_ETHERNET_TCP_LINK:
+            return BoardEthernet_RunW5300TcpLinkTest(record);
+
         default:
             record->errorCode = BOARD_TEST_ERROR_UNSUPPORTED;
             return BOARD_TEST_RESULT_NOT_SUPPORTED;
@@ -144,6 +147,7 @@ void BoardTest_TargetPoll(void)
     }
     else if(command == BOARD_TEST_COMMAND_STOP)
     {
+        BoardEthernet_AbortW5300TcpLinkTest();
         BoardTest_Stop();
         gBoardTestCommandMailbox.lastCommandResult = BOARD_TEST_RESULT_PASS;
         gBoardTestCommandMailbox.command = BOARD_TEST_COMMAND_NONE;

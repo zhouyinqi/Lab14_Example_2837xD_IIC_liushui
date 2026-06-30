@@ -24,6 +24,8 @@
 #define BOARD_ETHERNET_W5300_REG_S0_IR      0x0206U
 #define BOARD_ETHERNET_W5300_REG_S0_SSR     0x0208U
 #define BOARD_ETHERNET_W5300_REG_S0_PORT    0x020AU
+#define BOARD_ETHERNET_W5300_REG_S0_DPORT   0x0212U
+#define BOARD_ETHERNET_W5300_REG_S0_DIPR0   0x0214U
 #define BOARD_ETHERNET_W5300_REG_S0_MTU     0x0218U
 #define BOARD_ETHERNET_W5300_REG_S0_KEEP    0x021AU
 #define BOARD_ETHERNET_W5300_REG_S0_TTL     0x021EU
@@ -42,7 +44,10 @@
 #define BOARD_ETHERNET_SOCKET_SR_CLOSED     0x0000U
 #define BOARD_ETHERNET_SOCKET_SR_INIT       0x0013U
 #define BOARD_ETHERNET_SOCKET_SR_LISTEN     0x0014U
+#define BOARD_ETHERNET_SOCKET_SR_ESTABLISHED 0x0017U
 #define BOARD_ETHERNET_SOCKET_POLL_LIMIT    60000UL
+#define BOARD_ETHERNET_TCP_LINK_STATE_IDLE  0x0000U
+#define BOARD_ETHERNET_TCP_LINK_STATE_WAIT  0x0001U
 
 #define BOARD_ETHERNET_ARRAY_LEN(array) \
     ((BoardTest_U16)(sizeof(array) / sizeof((array)[0])))
@@ -76,6 +81,23 @@ volatile BoardEthernet_SocketSnapshot gBoardEthernetSocketSnapshot =
     0U
 };
 
+volatile BoardEthernet_TcpLinkSnapshot gBoardEthernetTcpLinkSnapshot =
+{
+    BOARD_ETHERNET_BACKEND_W5300_EMIF,
+    0U,
+    0U,
+    0U,
+    0U,
+    0U,
+    0U,
+    0U
+};
+
+#ifndef BOARD_TEST_HOST
+static BoardTest_U16 BoardEthernet_TcpLinkState =
+    BOARD_ETHERNET_TCP_LINK_STATE_IDLE;
+#endif
+
 BoardTest_Result BoardEthernet_EvaluateW5300BasicStatus(
     BoardTest_U16 statusMask,
     BoardTest_U16 modeReg,
@@ -106,6 +128,35 @@ BoardTest_Result BoardEthernet_EvaluateW5300BasicStatus(
     }
 
     record->errorCode = BOARD_TEST_ERROR_ETHERNET;
+    return BOARD_TEST_RESULT_FAIL;
+}
+
+BoardTest_Result BoardEthernet_EvaluateW5300TcpLinkStatus(
+    BoardTest_U16 statusMask,
+    BoardTest_U16 listenStatus,
+    BoardTest_U16 connectedStatus,
+    BoardTest_U16 closedStatus,
+    BoardTest_U16 remotePort,
+    BoardTest_Record *record)
+{
+    record->rawValue = (((BoardTest_U32)statusMask & 0xFFFFUL) << 16U) |
+                       ((BoardTest_U32)connectedStatus & 0xFF00UL) |
+                       ((BoardTest_U32)remotePort & 0x00FFUL);
+    record->measuredValue = (float)statusMask;
+    record->expectedMin = (float)BOARD_ETHERNET_TCP_LINK_REQUIRED_MASK;
+    record->expectedMax = (float)BOARD_ETHERNET_TCP_LINK_DIAGNOSTIC_MASK;
+
+    (void)listenStatus;
+    (void)closedStatus;
+
+    if((statusMask & BOARD_ETHERNET_TCP_LINK_REQUIRED_MASK) ==
+       BOARD_ETHERNET_TCP_LINK_REQUIRED_MASK)
+    {
+        record->errorCode = BOARD_TEST_ERROR_NONE;
+        return BOARD_TEST_RESULT_PASS;
+    }
+
+    record->errorCode = BOARD_TEST_ERROR_ETHERNET_TCP_LINK;
     return BOARD_TEST_RESULT_FAIL;
 }
 
@@ -444,5 +495,218 @@ BoardTest_Result BoardEthernet_RunW5300SocketTest(BoardTest_Record *record)
                                                   listenStatus,
                                                   closedStatus,
                                                   record);
+}
+
+static void BoardEthernet_UpdateTcpLinkSnapshot(BoardTest_U16 statusMask,
+                                                BoardTest_U16 listenStatus,
+                                                BoardTest_U16 connectedStatus,
+                                                BoardTest_U16 closedStatus,
+                                                BoardTest_U16 remoteIpHigh,
+                                                BoardTest_U16 remoteIpLow,
+                                                BoardTest_U16 remotePort)
+{
+    gBoardEthernetTcpLinkSnapshot.backend =
+        BOARD_ETHERNET_BACKEND_W5300_EMIF;
+    gBoardEthernetTcpLinkSnapshot.statusMask = statusMask;
+    gBoardEthernetTcpLinkSnapshot.listenStatus = listenStatus;
+    gBoardEthernetTcpLinkSnapshot.connectedStatus = connectedStatus;
+    gBoardEthernetTcpLinkSnapshot.closedStatus = closedStatus;
+    gBoardEthernetTcpLinkSnapshot.remoteIpHigh = remoteIpHigh;
+    gBoardEthernetTcpLinkSnapshot.remoteIpLow = remoteIpLow;
+    gBoardEthernetTcpLinkSnapshot.remotePort = remotePort;
+}
+
+static void BoardEthernet_UpdateTcpLinkRunningRecord(
+    BoardTest_U16 statusMask,
+    BoardTest_U16 connectedStatus,
+    BoardTest_U16 remotePort,
+    BoardTest_Record *record)
+{
+    record->rawValue = (((BoardTest_U32)statusMask & 0xFFFFUL) << 16U) |
+                       ((BoardTest_U32)connectedStatus & 0xFF00UL) |
+                       ((BoardTest_U32)remotePort & 0x00FFUL);
+    record->measuredValue = (float)statusMask;
+    record->expectedMin = (float)BOARD_ETHERNET_TCP_LINK_REQUIRED_MASK;
+    record->expectedMax = (float)BOARD_ETHERNET_TCP_LINK_DIAGNOSTIC_MASK;
+    record->errorCode = BOARD_TEST_ERROR_NONE;
+}
+
+static BoardTest_Result BoardEthernet_StartW5300TcpLinkTest(
+    BoardTest_Record *record)
+{
+    BoardTest_U16 statusMask;
+    BoardTest_U16 listenStatus;
+
+    statusMask = BOARD_ETHERNET_TCP_LINK_BACKEND_EMIF;
+    BoardEthernet_PrepareW5300Access();
+    BoardEthernet_W5300ConfigureCommon();
+
+    if((BoardEthernet_W5300Read(BOARD_ETHERNET_W5300_REG_MR) ==
+        BOARD_ETHERNET_W5300_MODE_EXPECTED) &&
+       (BoardEthernet_W5300Read(BOARD_ETHERNET_W5300_REG_RTR) ==
+        BOARD_ETHERNET_W5300_RTR_EXPECTED) &&
+       (BoardEthernet_W5300Read(BOARD_ETHERNET_W5300_REG_RCR) ==
+        BOARD_ETHERNET_W5300_RCR_EXPECTED))
+    {
+        statusMask |= BOARD_ETHERNET_TCP_LINK_COMMON_READY;
+    }
+
+    BoardEthernet_W5300Write(BOARD_ETHERNET_W5300_REG_S0_CR,
+                             BOARD_ETHERNET_SOCKET_CMD_CLOSE);
+    (void)BoardEthernet_W5300WaitSocketState(
+        BOARD_ETHERNET_SOCKET_SR_CLOSED);
+
+    BoardEthernet_W5300ConfigureSocket0Tcp();
+    BoardEthernet_W5300Write(BOARD_ETHERNET_W5300_REG_S0_CR,
+                             BOARD_ETHERNET_SOCKET_CMD_OPEN);
+    (void)BoardEthernet_W5300WaitSocketState(
+        BOARD_ETHERNET_SOCKET_SR_INIT);
+    BoardEthernet_W5300Write(BOARD_ETHERNET_W5300_REG_S0_CR,
+                             BOARD_ETHERNET_SOCKET_CMD_LISTEN);
+    listenStatus = BoardEthernet_W5300WaitSocketState(
+        BOARD_ETHERNET_SOCKET_SR_LISTEN);
+    if(BoardEthernet_W5300SocketState(listenStatus) ==
+       BOARD_ETHERNET_SOCKET_SR_LISTEN)
+    {
+        statusMask |= BOARD_ETHERNET_TCP_LINK_LISTEN;
+    }
+
+    BoardEthernet_UpdateTcpLinkSnapshot(statusMask,
+                                        listenStatus,
+                                        listenStatus,
+                                        0xFFFFU,
+                                        0U,
+                                        0U,
+                                        0U);
+    BoardEthernet_UpdateTcpLinkRunningRecord(statusMask,
+                                             listenStatus,
+                                             0U,
+                                             record);
+
+    if((statusMask & (BOARD_ETHERNET_TCP_LINK_COMMON_READY |
+                      BOARD_ETHERNET_TCP_LINK_LISTEN)) !=
+       (BOARD_ETHERNET_TCP_LINK_COMMON_READY |
+        BOARD_ETHERNET_TCP_LINK_LISTEN))
+    {
+        BoardEthernet_TcpLinkState = BOARD_ETHERNET_TCP_LINK_STATE_IDLE;
+        record->errorCode = BOARD_TEST_ERROR_ETHERNET_TCP_LINK;
+        return BOARD_TEST_RESULT_FAIL;
+    }
+
+    BoardEthernet_TcpLinkState = BOARD_ETHERNET_TCP_LINK_STATE_WAIT;
+    return BOARD_TEST_RESULT_RUNNING;
+}
+
+static BoardTest_Result BoardEthernet_PollW5300TcpLinkTest(
+    BoardTest_Record *record)
+{
+    BoardTest_U16 statusMask;
+    BoardTest_U16 connectedStatus;
+    BoardTest_U16 closedStatus;
+    BoardTest_U16 remoteIpHigh;
+    BoardTest_U16 remoteIpLow;
+    BoardTest_U16 remotePort;
+
+    statusMask = gBoardEthernetTcpLinkSnapshot.statusMask;
+    connectedStatus = BoardEthernet_W5300Socket0Status();
+    closedStatus = 0xFFFFU;
+    remoteIpHigh = gBoardEthernetTcpLinkSnapshot.remoteIpHigh;
+    remoteIpLow = gBoardEthernetTcpLinkSnapshot.remoteIpLow;
+    remotePort = gBoardEthernetTcpLinkSnapshot.remotePort;
+
+    if(BoardEthernet_W5300SocketState(connectedStatus) ==
+       BOARD_ETHERNET_SOCKET_SR_ESTABLISHED)
+    {
+        statusMask |= BOARD_ETHERNET_TCP_LINK_ESTABLISHED;
+        remotePort = BoardEthernet_W5300Read(
+            BOARD_ETHERNET_W5300_REG_S0_DPORT);
+        remoteIpHigh = BoardEthernet_W5300Read(
+            BOARD_ETHERNET_W5300_REG_S0_DIPR0);
+        remoteIpLow = BoardEthernet_W5300Read(
+            (BoardTest_U16)(BOARD_ETHERNET_W5300_REG_S0_DIPR0 + 0x0002U));
+        if((remotePort != 0U) || (remoteIpHigh != 0U) || (remoteIpLow != 0U))
+        {
+            statusMask |= BOARD_ETHERNET_TCP_LINK_PEER_CAPTURED;
+        }
+
+        BoardEthernet_W5300Write(BOARD_ETHERNET_W5300_REG_S0_CR,
+                                 BOARD_ETHERNET_SOCKET_CMD_CLOSE);
+        closedStatus = BoardEthernet_W5300WaitSocketState(
+            BOARD_ETHERNET_SOCKET_SR_CLOSED);
+        if(BoardEthernet_W5300SocketState(closedStatus) ==
+           BOARD_ETHERNET_SOCKET_SR_CLOSED)
+        {
+            statusMask |= BOARD_ETHERNET_TCP_LINK_CLOSE_CLOSED;
+        }
+
+        BoardEthernet_UpdateTcpLinkSnapshot(
+            statusMask,
+            gBoardEthernetTcpLinkSnapshot.listenStatus,
+            connectedStatus,
+            closedStatus,
+            remoteIpHigh,
+            remoteIpLow,
+            remotePort);
+        BoardEthernet_TcpLinkState = BOARD_ETHERNET_TCP_LINK_STATE_IDLE;
+
+        return BoardEthernet_EvaluateW5300TcpLinkStatus(
+            statusMask,
+            gBoardEthernetTcpLinkSnapshot.listenStatus,
+            connectedStatus,
+            closedStatus,
+            remotePort,
+            record);
+    }
+
+    if(BoardEthernet_W5300SocketState(connectedStatus) ==
+       BOARD_ETHERNET_SOCKET_SR_CLOSED)
+    {
+        BoardEthernet_TcpLinkState = BOARD_ETHERNET_TCP_LINK_STATE_IDLE;
+        statusMask &= (BoardTest_U16)~BOARD_ETHERNET_TCP_LINK_LISTEN;
+        BoardEthernet_UpdateTcpLinkSnapshot(
+            statusMask,
+            gBoardEthernetTcpLinkSnapshot.listenStatus,
+            connectedStatus,
+            closedStatus,
+            remoteIpHigh,
+            remoteIpLow,
+            remotePort);
+        record->errorCode = BOARD_TEST_ERROR_ETHERNET_TCP_LINK;
+        return BOARD_TEST_RESULT_FAIL;
+    }
+
+    BoardEthernet_UpdateTcpLinkSnapshot(
+        statusMask,
+        gBoardEthernetTcpLinkSnapshot.listenStatus,
+        connectedStatus,
+        closedStatus,
+        remoteIpHigh,
+        remoteIpLow,
+        remotePort);
+    BoardEthernet_UpdateTcpLinkRunningRecord(statusMask,
+                                             connectedStatus,
+                                             remotePort,
+                                             record);
+    return BOARD_TEST_RESULT_RUNNING;
+}
+
+BoardTest_Result BoardEthernet_RunW5300TcpLinkTest(BoardTest_Record *record)
+{
+    if(BoardEthernet_TcpLinkState == BOARD_ETHERNET_TCP_LINK_STATE_IDLE)
+    {
+        return BoardEthernet_StartW5300TcpLinkTest(record);
+    }
+
+    return BoardEthernet_PollW5300TcpLinkTest(record);
+}
+
+void BoardEthernet_AbortW5300TcpLinkTest(void)
+{
+    if(BoardEthernet_TcpLinkState != BOARD_ETHERNET_TCP_LINK_STATE_IDLE)
+    {
+        BoardEthernet_W5300Write(BOARD_ETHERNET_W5300_REG_S0_CR,
+                                 BOARD_ETHERNET_SOCKET_CMD_CLOSE);
+        BoardEthernet_TcpLinkState = BOARD_ETHERNET_TCP_LINK_STATE_IDLE;
+    }
 }
 #endif
