@@ -98,6 +98,9 @@ BoardTest_Result BoardTest_TargetExecute(BoardTest_U16 testId,
         case BOARD_TEST_ID_ETHERNET:
             return BoardEthernet_RunW5300BasicTest(record);
 
+        case BOARD_TEST_ID_ETHERNET_SOCKET:
+            return BoardEthernet_RunW5300SocketTest(record);
+
         default:
             record->errorCode = BOARD_TEST_ERROR_UNSUPPORTED;
             return BOARD_TEST_RESULT_NOT_SUPPORTED;

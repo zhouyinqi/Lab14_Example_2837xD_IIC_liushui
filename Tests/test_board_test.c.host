@@ -97,6 +97,18 @@ static BoardTest_Result TestExecutor(BoardTest_U16 testId,
             record);
     }
 
+    if(testId == BOARD_TEST_ID_ETHERNET_SOCKET)
+    {
+        return BoardEthernet_EvaluateW5300SocketStatus(
+            BOARD_ETHERNET_SOCKET_REQUIRED_MASK,
+            0x0021U,
+            12001U,
+            0x1300U,
+            0x1400U,
+            0x0000U,
+            record);
+    }
+
     if(testId == BOARD_TEST_ID_SPIA_INTERNAL)
     {
         return BoardSpi_EvaluateLoopbackStatus(
@@ -184,7 +196,7 @@ static void TestInitIsSafe(void)
     assert(BoardTest_GetCount() == BOARD_TEST_ITEM_COUNT);
     descriptor = BoardTest_GetDescriptor(BOARD_TEST_ITEM_COUNT - 1U);
     assert(descriptor != 0);
-    assert(descriptor->id == BOARD_TEST_ID_EMIF_BASIC);
+    assert(descriptor->id == BOARD_TEST_ID_ETHERNET_SOCKET);
     assert(BoardTest_GetDescriptor(BOARD_TEST_ITEM_COUNT) == 0);
 }
 
@@ -318,6 +330,8 @@ static void TestExternalConnectedStage(void)
     record = BoardTest_GetRecord(BOARD_TEST_ID_CAN_EXTERNAL);
     assert(record->result == BOARD_TEST_RESULT_NOT_SUPPORTED);
     record = BoardTest_GetRecord(BOARD_TEST_ID_ETHERNET);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_ETHERNET_SOCKET);
     assert(record->result == BOARD_TEST_RESULT_PASS);
     record = BoardTest_GetRecord(BOARD_TEST_ID_SPI_EXTERNAL);
     assert(record->result == BOARD_TEST_RESULT_NOT_SUPPORTED);
@@ -655,6 +669,33 @@ static void TestEthernetBasicEvaluation(void)
     assert(record.errorCode == BOARD_TEST_ERROR_ETHERNET);
 }
 
+static void TestEthernetSocketEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardEthernet_EvaluateW5300SocketStatus(
+               BOARD_ETHERNET_SOCKET_REQUIRED_MASK,
+               0x0021U,
+               12001U,
+               0x1300U,
+               0x1400U,
+               0x0000U,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x003F1314UL);
+
+    assert(BoardEthernet_EvaluateW5300SocketStatus(
+               (BoardTest_U16)(BOARD_ETHERNET_SOCKET_REQUIRED_MASK &
+                               ~BOARD_ETHERNET_SOCKET_LISTEN),
+               0x0021U,
+               12001U,
+               0x1300U,
+               0x0000U,
+               0x0000U,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_ETHERNET_SOCKET);
+}
+
 int main(void)
 {
     TestInitIsSafe();
@@ -677,6 +718,7 @@ int main(void)
     TestPwmSafetyEvaluation();
     TestEmifBasicEvaluation();
     TestEthernetBasicEvaluation();
+    TestEthernetSocketEvaluation();
     puts("board_test: all tests passed");
     return 0;
 }
