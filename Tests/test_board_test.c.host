@@ -120,6 +120,16 @@ static BoardTest_Result TestExecutor(BoardTest_U16 testId,
             record);
     }
 
+    if(testId == BOARD_TEST_ID_ETHERNET_TCP_ECHO)
+    {
+        return BoardEthernet_EvaluateW5300TcpEchoStatus(
+            BOARD_ETHERNET_TCP_ECHO_REQUIRED_MASK,
+            0x1710U,
+            4U,
+            8192U,
+            record);
+    }
+
     if(testId == BOARD_TEST_ID_SPIA_INTERNAL)
     {
         return BoardSpi_EvaluateLoopbackStatus(
@@ -207,7 +217,7 @@ static void TestInitIsSafe(void)
     assert(BoardTest_GetCount() == BOARD_TEST_ITEM_COUNT);
     descriptor = BoardTest_GetDescriptor(BOARD_TEST_ITEM_COUNT - 1U);
     assert(descriptor != 0);
-    assert(descriptor->id == BOARD_TEST_ID_ETHERNET_TCP_LINK);
+    assert(descriptor->id == BOARD_TEST_ID_ETHERNET_TCP_ECHO);
     assert(BoardTest_GetDescriptor(BOARD_TEST_ITEM_COUNT) == 0);
 }
 
@@ -345,6 +355,8 @@ static void TestExternalConnectedStage(void)
     record = BoardTest_GetRecord(BOARD_TEST_ID_ETHERNET_SOCKET);
     assert(record->result == BOARD_TEST_RESULT_PASS);
     record = BoardTest_GetRecord(BOARD_TEST_ID_ETHERNET_TCP_LINK);
+    assert(record->result == BOARD_TEST_RESULT_SKIP);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_ETHERNET_TCP_ECHO);
     assert(record->result == BOARD_TEST_RESULT_SKIP);
     record = BoardTest_GetRecord(BOARD_TEST_ID_SPI_EXTERNAL);
     assert(record->result == BOARD_TEST_RESULT_NOT_SUPPORTED);
@@ -734,6 +746,29 @@ static void TestEthernetTcpLinkEvaluation(void)
     assert(record.errorCode == BOARD_TEST_ERROR_ETHERNET_TCP_LINK);
 }
 
+static void TestEthernetTcpEchoEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardEthernet_EvaluateW5300TcpEchoStatus(
+               BOARD_ETHERNET_TCP_ECHO_REQUIRED_MASK,
+               0x1710U,
+               4U,
+               8192U,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x01FF1704UL);
+
+    assert(BoardEthernet_EvaluateW5300TcpEchoStatus(
+               (BoardTest_U16)(BOARD_ETHERNET_TCP_ECHO_REQUIRED_MASK &
+                               ~BOARD_ETHERNET_TCP_ECHO_RX_MATCH),
+               0x1704U,
+               4U,
+               8192U,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_ETHERNET_TCP_ECHO);
+}
+
 int main(void)
 {
     TestInitIsSafe();
@@ -758,6 +793,7 @@ int main(void)
     TestEthernetBasicEvaluation();
     TestEthernetSocketEvaluation();
     TestEthernetTcpLinkEvaluation();
+    TestEthernetTcpEchoEvaluation();
     puts("board_test: all tests passed");
     return 0;
 }
