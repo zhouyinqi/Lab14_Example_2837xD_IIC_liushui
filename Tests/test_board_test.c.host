@@ -3,6 +3,7 @@
 
 #include "Board_Adc_Test.h"
 #include "Board_Can_Test.h"
+#include "Board_Emif_Test.h"
 #include "Board_Gpio_Test.h"
 #include "Board_I2c_Test.h"
 #include "Board_Sci_Test.h"
@@ -70,6 +71,15 @@ static BoardTest_Result TestExecutor(BoardTest_U16 testId,
             BOARD_PWM_SAFE_REQUIRED_MASK,
             BOARD_EPWM_PAIR_COUNT,
             0U,
+            record);
+    }
+
+    if(testId == BOARD_TEST_ID_EMIF_BASIC)
+    {
+        return BoardEmif_EvaluateBasicStatus(
+            BOARD_EMIF_BASIC_REQUIRED_MASK,
+            BOARD_EMIF_ASYNC_REQUIRED_MASK,
+            BOARD_EMIF_ASYNC_REQUIRED_MASK,
             record);
     }
 
@@ -160,7 +170,7 @@ static void TestInitIsSafe(void)
     assert(BoardTest_GetCount() == BOARD_TEST_ITEM_COUNT);
     descriptor = BoardTest_GetDescriptor(BOARD_TEST_ITEM_COUNT - 1U);
     assert(descriptor != 0);
-    assert(descriptor->id == BOARD_TEST_ID_HPD_PHASE_2);
+    assert(descriptor->id == BOARD_TEST_ID_EMIF_BASIC);
     assert(BoardTest_GetDescriptor(BOARD_TEST_ITEM_COUNT) == 0);
 }
 
@@ -257,6 +267,8 @@ static void TestAutoSequenceFinishes(void)
     record = BoardTest_GetRecord(BOARD_TEST_ID_SPIC_INTERNAL);
     assert(record->result == BOARD_TEST_RESULT_PASS);
     record = BoardTest_GetRecord(BOARD_TEST_ID_I2C_B_TMP116);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_EMIF_BASIC);
     assert(record->result == BOARD_TEST_RESULT_PASS);
     record = BoardTest_GetRecord(BOARD_TEST_ID_RAM);
     assert(record->result == BOARD_TEST_RESULT_PASS);
@@ -579,6 +591,27 @@ static void TestPwmSafetyEvaluation(void)
     assert(record.errorCode == BOARD_TEST_ERROR_PWM_SAFE_CFG);
 }
 
+static void TestEmifBasicEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardEmif_EvaluateBasicStatus(
+               BOARD_EMIF_BASIC_REQUIRED_MASK,
+               BOARD_EMIF_ASYNC_REQUIRED_MASK,
+               BOARD_EMIF_ASYNC_REQUIRED_MASK,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x00FF0303UL);
+
+    assert(BoardEmif_EvaluateBasicStatus(
+               (BoardTest_U16)(BOARD_EMIF_BASIC_REQUIRED_MASK &
+                               ~BOARD_EMIF_BASIC_EMIF2_ASYNC_CS2),
+               BOARD_EMIF_ASYNC_REQUIRED_MASK,
+               BOARD_EMIF_ASYNC_WIDTH_16,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_EMIF_BASIC);
+}
+
 int main(void)
 {
     TestInitIsSafe();
@@ -599,6 +632,7 @@ int main(void)
     TestAdcBasicEvaluation();
     TestSpiLoopbackEvaluation();
     TestPwmSafetyEvaluation();
+    TestEmifBasicEvaluation();
     puts("board_test: all tests passed");
     return 0;
 }

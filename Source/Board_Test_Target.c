@@ -1,6 +1,7 @@
 #include "F28x_Project.h"
 #include "Board_Adc_Test.h"
 #include "Board_Can_Test.h"
+#include "Board_Emif_Test.h"
 #include "Board_Gpio_Test.h"
 #include "Board_I2c_Test.h"
 #include "Board_Pwm_Test.h"
@@ -89,6 +90,9 @@ BoardTest_Result BoardTest_TargetExecute(BoardTest_U16 testId,
 
         case BOARD_TEST_ID_PWM_BASIC:
             return BoardPwm_RunSafetyConfigTest(record);
+
+        case BOARD_TEST_ID_EMIF_BASIC:
+            return BoardEmif_RunBasicConfigTest(record);
 
         default:
             record->errorCode = BOARD_TEST_ERROR_UNSUPPORTED;
