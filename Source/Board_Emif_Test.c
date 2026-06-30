@@ -127,6 +127,14 @@ static BoardTest_U16 BoardEmif_IsPinmapValid(void)
            (BOARD_PIN_EMIF2_XD(15U) == 53U);
 }
 
+void BoardEmif_ConfigureExternalAsync(void)
+{
+    BoardEmif_EnableClocksAndReleaseReset();
+    BoardEmif_SelectEmif1Cpu1();
+    BoardEmif_ConfigureAsyncCs2(&Emif1Regs.ASYNC_CS2_CR);
+    BoardEmif_ConfigureAsyncCs2(&Emif2Regs.ASYNC_CS2_CR);
+}
+
 BoardTest_Result BoardEmif_RunBasicConfigTest(BoardTest_Record *record)
 {
     BoardTest_U16 statusMask;
@@ -135,10 +143,7 @@ BoardTest_Result BoardEmif_RunBasicConfigTest(BoardTest_Record *record)
     BoardTest_U16 emif1MasterSelect;
     BoardTest_U16 deviceCapability;
 
-    BoardEmif_EnableClocksAndReleaseReset();
-    BoardEmif_SelectEmif1Cpu1();
-    BoardEmif_ConfigureAsyncCs2(&Emif1Regs.ASYNC_CS2_CR);
-    BoardEmif_ConfigureAsyncCs2(&Emif2Regs.ASYNC_CS2_CR);
+    BoardEmif_ConfigureExternalAsync();
 
     statusMask = 0U;
     emif1AsyncMask = BoardEmif_CheckAsyncCs2(&Emif1Regs.ASYNC_CS2_CR);

@@ -2,6 +2,7 @@
 #include "Board_Adc_Test.h"
 #include "Board_Can_Test.h"
 #include "Board_Emif_Test.h"
+#include "Board_Ethernet_Test.h"
 #include "Board_Gpio_Test.h"
 #include "Board_I2c_Test.h"
 #include "Board_Pwm_Test.h"
@@ -93,6 +94,9 @@ BoardTest_Result BoardTest_TargetExecute(BoardTest_U16 testId,
 
         case BOARD_TEST_ID_EMIF_BASIC:
             return BoardEmif_RunBasicConfigTest(record);
+
+        case BOARD_TEST_ID_ETHERNET:
+            return BoardEthernet_RunW5300BasicTest(record);
 
         default:
             record->errorCode = BOARD_TEST_ERROR_UNSUPPORTED;

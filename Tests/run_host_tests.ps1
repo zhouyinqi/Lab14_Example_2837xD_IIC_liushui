@@ -21,6 +21,7 @@ $testExe = Join-Path $buildDir 'test_board_test.exe'
     (Join-Path $projectRoot 'Source\Board_Adc_Test.c') `
     (Join-Path $projectRoot 'Source\Board_Can_Test.c') `
     (Join-Path $projectRoot 'Source\Board_Emif_Test.c') `
+    (Join-Path $projectRoot 'Source\Board_Ethernet_Test.c') `
     (Join-Path $projectRoot 'Source\Board_I2c_Test.c') `
     (Join-Path $projectRoot 'Source\Board_Pwm_Test.c') `
     (Join-Path $projectRoot 'Source\Board_Sci_Test.c') `

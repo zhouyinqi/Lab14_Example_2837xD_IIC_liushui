@@ -4,6 +4,7 @@
 #include "Board_Adc_Test.h"
 #include "Board_Can_Test.h"
 #include "Board_Emif_Test.h"
+#include "Board_Ethernet_Test.h"
 #include "Board_Gpio_Test.h"
 #include "Board_I2c_Test.h"
 #include "Board_Sci_Test.h"
@@ -80,6 +81,19 @@ static BoardTest_Result TestExecutor(BoardTest_U16 testId,
             BOARD_EMIF_BASIC_REQUIRED_MASK,
             BOARD_EMIF_ASYNC_REQUIRED_MASK,
             BOARD_EMIF_ASYNC_REQUIRED_MASK,
+            record);
+    }
+
+    if(testId == BOARD_TEST_ID_ETHERNET)
+    {
+        return BoardEthernet_EvaluateW5300BasicStatus(
+            BOARD_ETHERNET_W5300_REQUIRED_MASK,
+            BOARD_ETHERNET_W5300_MODE_EXPECTED,
+            BOARD_ETHERNET_W5300_RTR_EXPECTED,
+            BOARD_ETHERNET_W5300_RCR_EXPECTED,
+            BOARD_ETHERNET_W5300_MEM_EXPECTED,
+            BOARD_ETHERNET_W5300_MEM_EXPECTED,
+            0x0000U,
             record);
     }
 
@@ -225,8 +239,8 @@ static void TestSingleTestRespectsStage(void)
            BOARD_TEST_STAGE_EXTERNAL_CONNECTED);
     BoardTest_Process(TestExecutor);
     record = BoardTest_GetRecord(BOARD_TEST_ID_ETHERNET);
-    assert(record->result == BOARD_TEST_RESULT_NOT_SUPPORTED);
-    assert(record->errorCode == BOARD_TEST_ERROR_UNSUPPORTED);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    assert(record->errorCode == BOARD_TEST_ERROR_NONE);
 }
 
 static void TestAutoSequenceFinishes(void)
@@ -304,7 +318,7 @@ static void TestExternalConnectedStage(void)
     record = BoardTest_GetRecord(BOARD_TEST_ID_CAN_EXTERNAL);
     assert(record->result == BOARD_TEST_RESULT_NOT_SUPPORTED);
     record = BoardTest_GetRecord(BOARD_TEST_ID_ETHERNET);
-    assert(record->result == BOARD_TEST_RESULT_NOT_SUPPORTED);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
     record = BoardTest_GetRecord(BOARD_TEST_ID_SPI_EXTERNAL);
     assert(record->result == BOARD_TEST_RESULT_NOT_SUPPORTED);
     record = BoardTest_GetRecord(BOARD_TEST_ID_I2C_EXTERNAL);
@@ -612,6 +626,35 @@ static void TestEmifBasicEvaluation(void)
     assert(record.errorCode == BOARD_TEST_ERROR_EMIF_BASIC);
 }
 
+static void TestEthernetBasicEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardEthernet_EvaluateW5300BasicStatus(
+               BOARD_ETHERNET_W5300_REQUIRED_MASK,
+               BOARD_ETHERNET_W5300_MODE_EXPECTED,
+               BOARD_ETHERNET_W5300_RTR_EXPECTED,
+               BOARD_ETHERNET_W5300_RCR_EXPECTED,
+               BOARD_ETHERNET_W5300_MEM_EXPECTED,
+               BOARD_ETHERNET_W5300_MEM_EXPECTED,
+               0x0000U,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x007FB807UL);
+
+    assert(BoardEthernet_EvaluateW5300BasicStatus(
+               (BoardTest_U16)(BOARD_ETHERNET_W5300_REQUIRED_MASK &
+                               ~BOARD_ETHERNET_W5300_RTR_READBACK),
+               BOARD_ETHERNET_W5300_MODE_EXPECTED,
+               0U,
+               BOARD_ETHERNET_W5300_RCR_EXPECTED,
+               BOARD_ETHERNET_W5300_MEM_EXPECTED,
+               BOARD_ETHERNET_W5300_MEM_EXPECTED,
+               0xFFFFU,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_ETHERNET);
+}
+
 int main(void)
 {
     TestInitIsSafe();
@@ -633,6 +676,7 @@ int main(void)
     TestSpiLoopbackEvaluation();
     TestPwmSafetyEvaluation();
     TestEmifBasicEvaluation();
+    TestEthernetBasicEvaluation();
     puts("board_test: all tests passed");
     return 0;
 }

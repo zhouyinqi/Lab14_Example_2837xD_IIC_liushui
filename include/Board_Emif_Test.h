@@ -50,6 +50,7 @@ BoardTest_Result BoardEmif_EvaluateBasicStatus(BoardTest_U16 statusMask,
                                                BoardTest_Record *record);
 
 #ifndef BOARD_TEST_HOST
+void BoardEmif_ConfigureExternalAsync(void);
 BoardTest_Result BoardEmif_RunBasicConfigTest(BoardTest_Record *record);
 #endif
 
