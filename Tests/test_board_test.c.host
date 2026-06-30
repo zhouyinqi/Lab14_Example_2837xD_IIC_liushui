@@ -48,6 +48,15 @@ static BoardTest_Result TestExecutor(BoardTest_U16 testId,
             record);
     }
 
+    if(testId == BOARD_TEST_ID_SCI_RS485_EXTERNAL)
+    {
+        return BoardSci_EvaluateRs485ExternalStatus(
+            (BoardTest_U16)BOARD_SCI_RS485_EXTERNAL_REQUIRED_MASK,
+            BOARD_SCI_RS485_EXTERNAL_REQUEST,
+            BOARD_SCI_RS485_EXTERNAL_RESPONSE,
+            record);
+    }
+
     if(testId == BOARD_TEST_ID_CAN_HOST)
     {
         return BoardCan_EvaluateLoopbackStatus(
@@ -375,7 +384,7 @@ static void TestExternalConnectedStage(void)
     record = BoardTest_GetRecord(BOARD_TEST_ID_I2C_EXTERNAL);
     assert(record->result == BOARD_TEST_RESULT_NOT_SUPPORTED);
     record = BoardTest_GetRecord(BOARD_TEST_ID_SCI_RS485_EXTERNAL);
-    assert(record->result == BOARD_TEST_RESULT_NOT_SUPPORTED);
+    assert(record->result == BOARD_TEST_RESULT_SKIP);
     record = BoardTest_GetRecord(BOARD_TEST_ID_HPD_BUS_1);
     assert(record->result == BOARD_TEST_RESULT_SKIP);
 }
@@ -548,6 +557,28 @@ static void TestSciLoopbackEvaluation(void)
                0U,
                &record) == BOARD_TEST_RESULT_FAIL);
     assert(record.errorCode == BOARD_TEST_ERROR_SCI_LOOPBACK);
+}
+
+static void TestSciRs485ExternalEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardSci_EvaluateRs485ExternalStatus(
+               (BoardTest_U16)BOARD_SCI_RS485_EXTERNAL_REQUIRED_MASK,
+               BOARD_SCI_RS485_EXTERNAL_REQUEST,
+               BOARD_SCI_RS485_EXTERNAL_RESPONSE,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x00FFA55AUL);
+
+    assert(BoardSci_EvaluateRs485ExternalStatus(
+               (BoardTest_U16)
+               (BOARD_SCI_RS485_EXTERNAL_REQUIRED_MASK &
+                ~BOARD_SCI_RS485_EXTERNAL_RX_MATCH),
+               0x0000U,
+               BOARD_SCI_RS485_EXTERNAL_RESPONSE,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_SCI_RS485_EXTERNAL);
 }
 
 static void TestCanLoopbackEvaluation(void)
@@ -821,6 +852,7 @@ int main(void)
     TestSystemTimerEvaluation();
     TestTmp116Evaluation();
     TestSciLoopbackEvaluation();
+    TestSciRs485ExternalEvaluation();
     TestCanLoopbackEvaluation();
     TestAdcBasicEvaluation();
     TestSpiLoopbackEvaluation();
