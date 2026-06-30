@@ -18,6 +18,7 @@ $testExe = Join-Path $buildDir 'test_board_test.exe'
     -Werror `
     -DBOARD_TEST_HOST `
     -I (Join-Path $projectRoot 'include') `
+    (Join-Path $projectRoot 'Source\Board_Adc_Test.c') `
     (Join-Path $projectRoot 'Source\Board_Can_Test.c') `
     (Join-Path $projectRoot 'Source\Board_I2c_Test.c') `
     (Join-Path $projectRoot 'Source\Board_Sci_Test.c') `

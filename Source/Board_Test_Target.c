@@ -1,4 +1,5 @@
 #include "F28x_Project.h"
+#include "Board_Adc_Test.h"
 #include "Board_Can_Test.h"
 #include "Board_Gpio_Test.h"
 #include "Board_I2c_Test.h"
@@ -81,6 +82,9 @@ BoardTest_Result BoardTest_TargetExecute(BoardTest_U16 testId,
 
         case BOARD_TEST_ID_GPIO:
             return BoardGpio_RunProgramLedTest(record);
+
+        case BOARD_TEST_ID_ADC_BASIC:
+            return BoardAdc_RunBasicSampleTest(record);
 
         default:
             record->errorCode = BOARD_TEST_ERROR_UNSUPPORTED;

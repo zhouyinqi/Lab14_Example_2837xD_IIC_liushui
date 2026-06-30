@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stdio.h>
 
+#include "Board_Adc_Test.h"
 #include "Board_Can_Test.h"
 #include "Board_Gpio_Test.h"
 #include "Board_I2c_Test.h"
@@ -51,6 +52,14 @@ static BoardTest_Result TestExecutor(BoardTest_U16 testId,
             BOARD_CAN_LOOPBACK_TX_PATTERN,
             BOARD_CAN_LOOPBACK_TX_PATTERN,
             0U,
+            record);
+    }
+
+    if(testId == BOARD_TEST_ID_ADC_BASIC)
+    {
+        return BoardAdc_EvaluateBasicSample(
+            BOARD_ADC_BASIC_STATUS_REQUIRED_MASK,
+            2048U,
             record);
     }
 
@@ -227,6 +236,8 @@ static void TestAutoSequenceFinishes(void)
     assert(record->result == BOARD_TEST_RESULT_PASS);
     record = BoardTest_GetRecord(BOARD_TEST_ID_CAN_HOST);
     assert(record->result == BOARD_TEST_RESULT_PASS);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_ADC_BASIC);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
     record = BoardTest_GetRecord(BOARD_TEST_ID_SPIA_INTERNAL);
     assert(record->result == BOARD_TEST_RESULT_PASS);
     record = BoardTest_GetRecord(BOARD_TEST_ID_SPIB_INTERNAL);
@@ -303,6 +314,8 @@ static void TestHpdInjectionStage(void)
     assert(record->result == BOARD_TEST_RESULT_SKIP);
     record = BoardTest_GetRecord(BOARD_TEST_ID_HPD_BUS_1);
     assert(record->result == BOARD_TEST_RESULT_NOT_SUPPORTED);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_ADC_BASIC);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
     record = BoardTest_GetRecord(BOARD_TEST_ID_HPD_NTC_1);
     assert(record->result == BOARD_TEST_RESULT_NOT_SUPPORTED);
     record = BoardTest_GetRecord(BOARD_TEST_ID_HPD_CURRENT_1);
@@ -479,6 +492,37 @@ static void TestCanLoopbackEvaluation(void)
     assert(record.errorCode == BOARD_TEST_ERROR_CAN_LOOPBACK);
 }
 
+static void TestAdcBasicEvaluation(void)
+{
+    BoardTest_Record record;
+    BoardTest_U16 raw;
+    float voltage;
+
+    assert(BoardAdc_EvaluateBasicSample(
+               BOARD_ADC_BASIC_STATUS_REQUIRED_MASK,
+               2048U,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x001F0800UL);
+
+    assert(BoardAdc_EvaluateBasicSample(
+               (BoardTest_U16)(BOARD_ADC_BASIC_STATUS_REQUIRED_MASK &
+                               ~BOARD_ADC_BASIC_CONVERSION_DONE),
+               2048U,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_ADC_SAMPLE);
+
+    assert(BoardAdc_VoltageToRaw(0.0F) == 0U);
+    assert(BoardAdc_VoltageToRaw(BOARD_ADC_REFERENCE_VOLTAGE_V) ==
+           BOARD_ADC_RAW_MAX);
+    raw = BoardAdc_VoltageToRaw(1.65F);
+    assert((raw == 2047U) || (raw == 2048U));
+
+    voltage = BoardAdc_RawToVoltage(BOARD_ADC_RAW_MAX);
+    assert(voltage > 3.29F);
+    assert(voltage <= BOARD_ADC_REFERENCE_VOLTAGE_V);
+}
+
 static void TestSpiLoopbackEvaluation(void)
 {
     BoardTest_Record record;
@@ -517,6 +561,7 @@ int main(void)
     TestTmp116Evaluation();
     TestSciLoopbackEvaluation();
     TestCanLoopbackEvaluation();
+    TestAdcBasicEvaluation();
     TestSpiLoopbackEvaluation();
     puts("board_test: all tests passed");
     return 0;
