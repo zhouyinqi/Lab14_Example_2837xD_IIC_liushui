@@ -101,6 +101,9 @@ BoardTest_Result BoardTest_TargetExecute(BoardTest_U16 testId,
         case BOARD_TEST_ID_EMIF_BASIC:
             return BoardEmif_RunBasicConfigTest(record);
 
+        case BOARD_TEST_ID_EMIF_EXTERNAL:
+            return BoardEmif_RunSramExternalTest(record);
+
         case BOARD_TEST_ID_ETHERNET:
             return BoardEthernet_RunW5300BasicTest(record);
 

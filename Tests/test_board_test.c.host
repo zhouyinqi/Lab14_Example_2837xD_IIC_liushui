@@ -106,6 +106,16 @@ static BoardTest_Result TestExecutor(BoardTest_U16 testId,
             record);
     }
 
+    if(testId == BOARD_TEST_ID_EMIF_EXTERNAL)
+    {
+        return BoardEmif_EvaluateSramStatus(
+            BOARD_EMIF_SRAM_REQUIRED_MASK,
+            BOARD_EMIF_SRAM_FAIL_NONE,
+            0xA5A5U,
+            0xA5A5U,
+            record);
+    }
+
     if(testId == BOARD_TEST_ID_ETHERNET)
     {
         return BoardEthernet_EvaluateW5300BasicStatus(
@@ -391,6 +401,8 @@ static void TestExternalConnectedStage(void)
     assert(record->result == BOARD_TEST_RESULT_SKIP);
     record = BoardTest_GetRecord(BOARD_TEST_ID_CAN_EXTERNAL);
     assert(record->result == BOARD_TEST_RESULT_SKIP);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_EMIF_EXTERNAL);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
     record = BoardTest_GetRecord(BOARD_TEST_ID_ETHERNET);
     assert(record->result == BOARD_TEST_RESULT_PASS);
     record = BoardTest_GetRecord(BOARD_TEST_ID_ETHERNET_SOCKET);
@@ -760,6 +772,29 @@ static void TestEmifBasicEvaluation(void)
     assert(record.errorCode == BOARD_TEST_ERROR_EMIF_BASIC);
 }
 
+static void TestEmifSramEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardEmif_EvaluateSramStatus(
+               BOARD_EMIF_SRAM_REQUIRED_MASK,
+               BOARD_EMIF_SRAM_FAIL_NONE,
+               0xA5A5U,
+               0xA5A5U,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x003F0000UL);
+
+    assert(BoardEmif_EvaluateSramStatus(
+               (BoardTest_U16)(BOARD_EMIF_SRAM_REQUIRED_MASK &
+                               ~BOARD_EMIF_SRAM_ADDRESS_PATTERN),
+               BOARD_EMIF_SRAM_FAIL_ADDRESS,
+               0x0010U,
+               0x0011U,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_EMIF_SRAM);
+}
+
 static void TestEthernetBasicEvaluation(void)
 {
     BoardTest_Record record;
@@ -911,6 +946,7 @@ int main(void)
     TestSpiLoopbackEvaluation();
     TestPwmSafetyEvaluation();
     TestEmifBasicEvaluation();
+    TestEmifSramEvaluation();
     TestEthernetBasicEvaluation();
     TestEthernetSocketEvaluation();
     TestEthernetTcpLinkEvaluation();
