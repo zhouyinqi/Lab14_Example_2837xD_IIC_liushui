@@ -89,6 +89,9 @@ BoardTest_Result BoardTest_TargetExecute(BoardTest_U16 testId,
         case BOARD_TEST_ID_SPIC_INTERNAL:
             return BoardSpi_RunSpicLoopbackTest(record);
 
+        case BOARD_TEST_ID_SPI_EXTERNAL:
+            return BoardSpi_RunSpicExternalTest(record);
+
         case BOARD_TEST_ID_GPIO:
             return BoardGpio_RunProgramLedTest(record);
 

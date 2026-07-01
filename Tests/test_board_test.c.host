@@ -199,6 +199,14 @@ static BoardTest_Result TestExecutor(BoardTest_U16 testId,
             record);
     }
 
+    if(testId == BOARD_TEST_ID_SPI_EXTERNAL)
+    {
+        return BoardSpi_EvaluateExternalStatus(
+            BOARD_SPI_EXTERNAL_REQUIRED_MASK,
+            BOARD_SPI_EXTERNAL_FAIL_NONE,
+            record);
+    }
+
     if(testId == BOARD_TEST_ID_SYS_CLOCK)
     {
         return BoardSystem_EvaluateMask(BOARD_SYSTEM_CLOCK_EXPECTED_MASK,
@@ -414,7 +422,7 @@ static void TestExternalConnectedStage(void)
     record = BoardTest_GetRecord(BOARD_TEST_ID_ETHERNET_TCP_STABILITY);
     assert(record->result == BOARD_TEST_RESULT_SKIP);
     record = BoardTest_GetRecord(BOARD_TEST_ID_SPI_EXTERNAL);
-    assert(record->result == BOARD_TEST_RESULT_NOT_SUPPORTED);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
     record = BoardTest_GetRecord(BOARD_TEST_ID_I2C_EXTERNAL);
     assert(record->result == BOARD_TEST_RESULT_NOT_SUPPORTED);
     record = BoardTest_GetRecord(BOARD_TEST_ID_SCI_RS485_EXTERNAL);
@@ -729,6 +737,27 @@ static void TestSpiLoopbackEvaluation(void)
     assert(record.errorCode == BOARD_TEST_ERROR_SPI_LOOPBACK);
 }
 
+static void TestSpiExternalEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardSpi_EvaluateExternalStatus(
+               BOARD_SPI_EXTERNAL_REQUIRED_MASK,
+               BOARD_SPI_EXTERNAL_FAIL_NONE,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x00FF0000UL);
+
+    assert(BoardSpi_EvaluateExternalStatus(
+               (BoardTest_U16)(BOARD_SPI_EXTERNAL_REQUIRED_MASK &
+                               ~BOARD_SPI_EXTERNAL_FRAM_ID),
+               BOARD_SPI_EXTERNAL_FAIL_FRAM_ID,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_SPI_EXTERNAL);
+    assert(record.expectedMin == (float)BOARD_SPI_EXTERNAL_REQUIRED_MASK);
+    assert(record.expectedMax == (float)BOARD_SPI_EXTERNAL_DIAGNOSTIC_MASK);
+}
+
 static void TestPwmSafetyEvaluation(void)
 {
     BoardTest_Record record;
@@ -944,6 +973,7 @@ int main(void)
     TestCanExternalEvaluation();
     TestAdcBasicEvaluation();
     TestSpiLoopbackEvaluation();
+    TestSpiExternalEvaluation();
     TestPwmSafetyEvaluation();
     TestEmifBasicEvaluation();
     TestEmifSramEvaluation();
