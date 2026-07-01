@@ -77,6 +77,9 @@ BoardTest_Result BoardTest_TargetExecute(BoardTest_U16 testId,
         case BOARD_TEST_ID_CAN_HOST:
             return BoardCan_RunLoopbackTest(record);
 
+        case BOARD_TEST_ID_CAN_EXTERNAL:
+            return BoardCan_RunExternalTest(record);
+
         case BOARD_TEST_ID_SPIA_INTERNAL:
             return BoardSpi_RunSpiaLoopbackTest(record);
 
@@ -160,6 +163,7 @@ void BoardTest_TargetPoll(void)
         BoardEthernet_AbortW5300TcpEchoTest();
         BoardEthernet_AbortW5300TcpStabilityTest();
         BoardSci_AbortRs485ExternalTest();
+        BoardCan_AbortExternalTest();
         BoardTest_Stop();
         gBoardTestCommandMailbox.lastCommandResult = BOARD_TEST_RESULT_PASS;
         gBoardTestCommandMailbox.command = BOARD_TEST_COMMAND_NONE;

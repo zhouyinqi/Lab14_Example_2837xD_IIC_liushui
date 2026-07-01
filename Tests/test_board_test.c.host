@@ -67,6 +67,19 @@ static BoardTest_Result TestExecutor(BoardTest_U16 testId,
             record);
     }
 
+    if(testId == BOARD_TEST_ID_CAN_EXTERNAL)
+    {
+        return BoardCan_EvaluateExternalStatus(
+            (BoardTest_U16)BOARD_CAN_EXTERNAL_EXPECTED_MASK,
+            BOARD_CAN_EXTERNAL_REQUEST_ID,
+            BOARD_CAN_EXTERNAL_DATA_BYTES,
+            BOARD_CAN_EXTERNAL_REQUEST_PATTERN,
+            BOARD_CAN_EXTERNAL_RESPONSE_ID,
+            BOARD_CAN_EXTERNAL_REQUEST_PATTERN,
+            0U,
+            record);
+    }
+
     if(testId == BOARD_TEST_ID_ADC_BASIC)
     {
         return BoardAdc_EvaluateBasicSample(
@@ -293,6 +306,15 @@ static void TestSingleTestRespectsStage(void)
     record = BoardTest_GetRecord(BOARD_TEST_ID_ETHERNET);
     assert(record->result == BOARD_TEST_RESULT_PASS);
     assert(record->errorCode == BOARD_TEST_ERROR_NONE);
+
+    assert(BoardTest_StartSingleInStage(
+               BOARD_TEST_ID_CAN_EXTERNAL,
+               BOARD_TEST_STAGE_EXTERNAL_CONNECTED) ==
+           BOARD_TEST_RESULT_RUNNING);
+    BoardTest_Process(TestExecutor);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_CAN_EXTERNAL);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    assert(record->errorCode == BOARD_TEST_ERROR_NONE);
 }
 
 static void TestAutoSequenceFinishes(void)
@@ -368,7 +390,7 @@ static void TestExternalConnectedStage(void)
     record = BoardTest_GetRecord(BOARD_TEST_ID_GPIO);
     assert(record->result == BOARD_TEST_RESULT_SKIP);
     record = BoardTest_GetRecord(BOARD_TEST_ID_CAN_EXTERNAL);
-    assert(record->result == BOARD_TEST_RESULT_NOT_SUPPORTED);
+    assert(record->result == BOARD_TEST_RESULT_SKIP);
     record = BoardTest_GetRecord(BOARD_TEST_ID_ETHERNET);
     assert(record->result == BOARD_TEST_RESULT_PASS);
     record = BoardTest_GetRecord(BOARD_TEST_ID_ETHERNET_SOCKET);
@@ -613,6 +635,36 @@ static void TestCanLoopbackEvaluation(void)
     assert(record.errorCode == BOARD_TEST_ERROR_CAN_LOOPBACK);
 }
 
+static void TestCanExternalEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardCan_EvaluateExternalStatus(
+               (BoardTest_U16)BOARD_CAN_EXTERNAL_EXPECTED_MASK,
+               BOARD_CAN_EXTERNAL_REQUEST_ID,
+               BOARD_CAN_EXTERNAL_DATA_BYTES,
+               BOARD_CAN_EXTERNAL_REQUEST_PATTERN,
+               BOARD_CAN_EXTERNAL_RESPONSE_ID,
+               BOARD_CAN_EXTERNAL_REQUEST_PATTERN,
+               0U,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+
+    assert(BoardCan_EvaluateExternalStatus(
+               (BoardTest_U16)(BOARD_CAN_EXTERNAL_EXPECTED_MASK &
+                               ~BOARD_CAN_EXTERNAL_RX_PATTERN_MATCH),
+               BOARD_CAN_EXTERNAL_REQUEST_ID,
+               BOARD_CAN_EXTERNAL_DATA_BYTES,
+               0UL,
+               BOARD_CAN_EXTERNAL_RESPONSE_ID,
+               BOARD_CAN_EXTERNAL_REQUEST_PATTERN,
+               0U,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_CAN_EXTERNAL);
+    assert(record.expectedMin == (float)BOARD_CAN_EXTERNAL_REQUIRED_MASK);
+    assert(record.expectedMax == (float)BOARD_CAN_EXTERNAL_DIAGNOSTIC_MASK);
+}
+
 static void TestAdcBasicEvaluation(void)
 {
     BoardTest_Record record;
@@ -854,6 +906,7 @@ int main(void)
     TestSciLoopbackEvaluation();
     TestSciRs485ExternalEvaluation();
     TestCanLoopbackEvaluation();
+    TestCanExternalEvaluation();
     TestAdcBasicEvaluation();
     TestSpiLoopbackEvaluation();
     TestPwmSafetyEvaluation();
