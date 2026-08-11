@@ -249,6 +249,10 @@ BoardTest_Result BoardEthernet_RunW5300TcpStabilityTest(
 void BoardEthernet_AbortW5300TcpLinkTest(void);
 void BoardEthernet_AbortW5300TcpEchoTest(void);
 void BoardEthernet_AbortW5300TcpStabilityTest(void);
+void BoardEthernet_EnableW5300TcpStandby(void);
+void BoardEthernet_DisableW5300TcpStandby(void);
+void BoardEthernet_ServiceW5300TcpStandby(
+    BoardTest_StandbyServiceStatus *status);
 #endif
 
 #ifdef __cplusplus

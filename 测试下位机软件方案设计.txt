@@ -14,13 +14,17 @@
 
 2. 验证 DSP28377D 其他常用外设是否正常，包括 GPIO、ePWM、ADC、CAN、SCI/UART、SPI、I2C、EMIF、CPU Timer、Watchdog、Flash、RAM、外部通信芯片接口等。
 
-3. 支持上位机一键测试。上位机发送测试指令，下位机逐项执行测试，并返回 PASS / FAIL / WARN / SKIP 结果。
+3. 支持上位机一键测试和待命式运行。程序下载完成并启动后，下位机默认进入待命状态，不自动执行外设测试；当外设按要求连接完成后，由上位机点击测试按钮下发命令，下位机再按阶段逐项执行一键测试，并返回 PASS / FAIL / WARN / SKIP 结果。command=4 完成外设自动项后，CAN、SCIB/RS485 和 Ethernet 按 communicationStandbyEnableMask 进入可选后台待命，收到测试数据后持续返回应答；上位机通过统一待命状态记录读取等待、接收、回复和失败状态。TCP_LINK、TCP_ECHO、TCP_STABILITY 继续保留为单项测试。
 
 4. 支持单项测试。上位机可指定某一外设或某一功能单独测试，例如 CAN 通信测试、ETH 通信测试、ADC 母线采样测试、PWM 发波测试。
 
 5. 支持模拟量注入测试。通过外部电压源、电阻箱、信号发生器，或软件内部模拟量注入模式，模拟母线电压、电流、线电压、NTC 温度等数值，使软件流程跑通，同时判断采样链路和换算逻辑是否正常。
 
 6. 支持测试日志保存和故障定位。每个测试项输出原始 ADC 值、工程量、判断阈值、测试结果、失败原因、时间戳和建议排查方向。
+
+7. DO 试验台采用两套互斥接线配置。EDO 模式为板卡 24V 接 EDOP1~3、板卡 COM 接 PLC DI 公共地、EDON1~3 接 PLC DI1~3；HDO 模式为板卡 +24VDIO 接 PLC 该组 DI 公共 COM/S/S、HDO1~2 接 PLC DI1~2。同一组 PLC DI 端子和公共端被重复使用，因此自动策略固定为：EDO1~3 加入 command=4 外设一键测试，HDO1~2 永久保留 testId=788 单项测试，不进入 command=4。command=4 表示外设接线已确认，下位机自动使用安全解锁值 0xD012 和通道掩码 0x0007，依次驱动 EDO1~3，最后关闭数据和使能寄存器。2026-07-23 已完成 EDO command=4 Debug 板上验证，PLC DI1~3 灯按预期动作；HDO testId=788 Debug 单项板上验证完成。现阶段PLC状态尚未回传DSP，寄存器操作与安全关闭正常时记录为 WARN，并由操作人员观察PLC DI灯确认物理输出；PLC反馈协议接入后，反馈与EDO指令一致时再判定 PASS。现有 testId=787 单项测试保持可用，并继续由邮箱指定解锁值和通道掩码。
+
+8. DI 试验台使用 Siemens S7-1200 CPU 1214C DC/DC/DC（6ES7214-1AG40-0XB0）的 24V 晶体管输出。板卡 24VDIO 接 PLC 3L+，板卡 COM 接 PLC 3M，并与板卡 EDICOM/HDICOM 共地；PLC DO00~DO05 分别接 EDI1~EDI6，DO06~DO07 分别接 HDI1~HDI2。2026-07-21 已逐路完成板上验证：FPGA DI 读寄存器为 EMIF2 地址 0x2000，EDI1~EDI6 对应 BIT0~BIT5，HDI1~HDI2 对应 BIT6~BIT7，全部为低有效。单项测试 ID 为 0x0315（789），可通过 fpgaDiChannelMask 选择部分通道；在 5 秒窗口内确认指定通道均观察到高、低和跳变后判定 PASS。该测试已加入 command=4，自动流程强制使用 0x00FF 测试全部 8 路，前提是 PLC 已连接并持续输出 1 秒翻转信号。2026-07-21 已完成 command=4 一键测试的 Debug 板上验证，8 路 DI 自动测试通过。
 
 二、软件总体定位
 

@@ -31,7 +31,22 @@ volatile BoardSci_Rs485ExternalSnapshot gBoardSciRs485ExternalSnapshot =
     0U
 };
 
+volatile BoardSci_SciaHandheldExternalSnapshot
+    gBoardSciSciaHandheldExternalSnapshot =
+{
+    0U,
+    0U,
+    0U,
+    0U,
+    0U
+};
+
 static BoardTest_U16 BoardSci_Rs485ExternalState =
+    BOARD_SCI_RS485_STATE_IDLE;
+static BoardTest_U16 BoardSci_SciaHandheldExternalState =
+    BOARD_SCI_RS485_STATE_IDLE;
+static BoardTest_U16 BoardSci_Rs485StandbyEnabled = 0U;
+static BoardTest_U16 BoardSci_Rs485StandbyState =
     BOARD_SCI_RS485_STATE_IDLE;
 
 #endif
@@ -82,6 +97,32 @@ BoardTest_Result BoardSci_EvaluateRs485ExternalStatus(
     }
 
     record->errorCode = BOARD_TEST_ERROR_SCI_RS485_EXTERNAL;
+    return BOARD_TEST_RESULT_FAIL;
+}
+
+BoardTest_Result BoardSci_EvaluateSciaHandheldExternalStatus(
+    BoardTest_U16 statusMask,
+    BoardTest_U16 rxValue,
+    BoardTest_U16 txValue,
+    BoardTest_Record *record)
+{
+    record->rawValue = (((BoardTest_U32)statusMask & 0xFFFFUL) << 16U) |
+                       (((BoardTest_U32)rxValue & 0x00FFUL) << 8U) |
+                       ((BoardTest_U32)txValue & 0x00FFUL);
+    record->measuredValue = (float)statusMask;
+    record->expectedMin =
+        (float)BOARD_SCI_HANDHELD_EXTERNAL_REQUIRED_MASK;
+    record->expectedMax =
+        (float)BOARD_SCI_HANDHELD_EXTERNAL_DIAGNOSTIC_MASK;
+
+    if((statusMask & BOARD_SCI_HANDHELD_EXTERNAL_REQUIRED_MASK) ==
+       BOARD_SCI_HANDHELD_EXTERNAL_REQUIRED_MASK)
+    {
+        record->errorCode = BOARD_TEST_ERROR_NONE;
+        return BOARD_TEST_RESULT_PASS;
+    }
+
+    record->errorCode = BOARD_TEST_ERROR_SCIA_HANDHELD_EXTERNAL;
     return BOARD_TEST_RESULT_FAIL;
 }
 
@@ -185,6 +226,12 @@ static void BoardSci_SetScibDirection(BoardTest_U16 level)
     gBoardSciRs485ExternalSnapshot.directionLevel = level;
 }
 
+static void BoardSci_SetSciaDirection(BoardTest_U16 level)
+{
+    GPIO_WritePin(BOARD_PIN_SCIA_DIRECTION, level);
+    gBoardSciSciaHandheldExternalSnapshot.directionLevel = level;
+}
+
 static void BoardSci_InitScibRs485External(void)
 {
     GPIO_SetupPinMux(BOARD_PIN_SCIB_RX, GPIO_MUX_CPU1, 2U);
@@ -212,6 +259,35 @@ static void BoardSci_InitScibRs485External(void)
     ScibRegs.SCIFFRX.bit.RXFFINTCLR = 1U;
     ScibRegs.SCIFFTX.bit.TXFFINTCLR = 1U;
     ScibRegs.SCICTL1.all = 0x0023U;
+}
+
+static void BoardSci_InitSciaHandheldExternal(void)
+{
+    GPIO_SetupPinMux(BOARD_PIN_SCIA_RX, GPIO_MUX_CPU1, 6U);
+    GPIO_SetupPinOptions(BOARD_PIN_SCIA_RX, GPIO_INPUT, GPIO_ASYNC);
+    GPIO_SetupPinMux(BOARD_PIN_SCIA_TX, GPIO_MUX_CPU1, 6U);
+    GPIO_SetupPinOptions(BOARD_PIN_SCIA_TX, GPIO_OUTPUT, GPIO_ASYNC);
+    GPIO_SetupPinMux(BOARD_PIN_SCIA_DIRECTION, GPIO_MUX_CPU1, 0U);
+    GPIO_SetupPinOptions(BOARD_PIN_SCIA_DIRECTION, GPIO_OUTPUT,
+                         GPIO_PUSHPULL);
+    BoardSci_SetSciaDirection(0U);
+
+    SciaRegs.SCICTL1.all = 0x0000U;
+    SciaRegs.SCICCR.all = 0x0007U;
+    SciaRegs.SCICTL1.all = 0x0003U;
+    SciaRegs.SCICTL2.all = 0x0003U;
+    SciaRegs.SCICTL2.bit.TXINTENA = 1U;
+    SciaRegs.SCICTL2.bit.RXBKINTENA = 1U;
+    SciaRegs.SCIHBAUD = BOARD_SCI_BRR_9600_H;
+    SciaRegs.SCILBAUD = BOARD_SCI_BRR_9600_L;
+    SciaRegs.SCIFFTX.all = 0xE040U;
+    SciaRegs.SCIFFRX.all = 0x2044U;
+    SciaRegs.SCIFFCT.all = 0x0000U;
+    SciaRegs.SCIPRI.bit.FREE = 1U;
+    SciaRegs.SCIFFRX.bit.RXFFOVRCLR = 1U;
+    SciaRegs.SCIFFRX.bit.RXFFINTCLR = 1U;
+    SciaRegs.SCIFFTX.bit.TXFFINTCLR = 1U;
+    SciaRegs.SCICTL1.all = 0x0023U;
 }
 
 static void BoardSci_UpdateRs485ExternalSnapshot(BoardTest_U16 statusMask,
@@ -427,6 +503,215 @@ static BoardTest_Result BoardSci_PollRs485ExternalTxDone(
                                                 record);
 }
 
+static void BoardSci_UpdateSciaHandheldExternalSnapshot(
+    BoardTest_U16 statusMask,
+    BoardTest_U16 rxValue,
+    BoardTest_U16 txValue,
+    BoardTest_U16 detail)
+{
+    gBoardSciSciaHandheldExternalSnapshot.statusMask = statusMask;
+    gBoardSciSciaHandheldExternalSnapshot.rxValue = rxValue;
+    gBoardSciSciaHandheldExternalSnapshot.txValue = txValue;
+    gBoardSciSciaHandheldExternalSnapshot.detail = detail;
+}
+
+static void BoardSci_UpdateSciaHandheldExternalRunningRecord(
+    BoardTest_U16 statusMask,
+    BoardTest_U16 rxValue,
+    BoardTest_U16 txValue,
+    BoardTest_Record *record)
+{
+    record->rawValue = (((BoardTest_U32)statusMask & 0xFFFFUL) << 16U) |
+                       (((BoardTest_U32)rxValue & 0x00FFUL) << 8U) |
+                       ((BoardTest_U32)txValue & 0x00FFUL);
+    record->measuredValue = (float)statusMask;
+    record->expectedMin =
+        (float)BOARD_SCI_HANDHELD_EXTERNAL_REQUIRED_MASK;
+    record->expectedMax =
+        (float)BOARD_SCI_HANDHELD_EXTERNAL_DIAGNOSTIC_MASK;
+    record->errorCode = BOARD_TEST_ERROR_NONE;
+}
+
+static BoardTest_Result BoardSci_FailSciaHandheldExternalTest(
+    BoardTest_U16 statusMask,
+    BoardTest_U16 rxValue,
+    BoardTest_U16 txValue,
+    BoardTest_U16 detail,
+    BoardTest_Record *record)
+{
+    BoardSci_SetSciaDirection(0U);
+    statusMask |= BOARD_SCI_HANDHELD_EXTERNAL_BACK_TO_RX;
+    BoardSci_SciaHandheldExternalState = BOARD_SCI_RS485_STATE_IDLE;
+    BoardSci_UpdateSciaHandheldExternalSnapshot(statusMask,
+                                                rxValue,
+                                                txValue,
+                                                detail);
+    return BoardSci_EvaluateSciaHandheldExternalStatus(statusMask,
+                                                       rxValue,
+                                                       txValue,
+                                                       record);
+}
+
+static BoardTest_Result BoardSci_StartSciaHandheldExternalTest(
+    BoardTest_Record *record)
+{
+    BoardTest_U16 statusMask;
+    BoardTest_U16 detail;
+
+    statusMask = 0U;
+    detail = 0U;
+
+    BoardSci_InitSciaHandheldExternal();
+    statusMask |= BOARD_SCI_HANDHELD_EXTERNAL_CONFIGURED;
+    statusMask |= BOARD_SCI_HANDHELD_EXTERNAL_RX_ENABLE_LOW;
+    BoardSci_SciaHandheldExternalState = BOARD_SCI_RS485_STATE_WAIT_RX;
+
+    BoardSci_UpdateSciaHandheldExternalSnapshot(
+        statusMask,
+        0U,
+        BOARD_SCI_HANDHELD_EXTERNAL_RESPONSE,
+        detail);
+    BoardSci_UpdateSciaHandheldExternalRunningRecord(
+        statusMask,
+        0U,
+        BOARD_SCI_HANDHELD_EXTERNAL_RESPONSE,
+        record);
+
+    return BOARD_TEST_RESULT_RUNNING;
+}
+
+static BoardTest_Result BoardSci_PollSciaHandheldExternalRx(
+    BoardTest_Record *record)
+{
+    BoardTest_U16 statusMask;
+    BoardTest_U16 rxValue;
+    BoardTest_U16 txValue;
+    BoardTest_U16 detail;
+    BoardTest_U16 rxBuffer;
+
+    statusMask = gBoardSciSciaHandheldExternalSnapshot.statusMask;
+    rxValue = gBoardSciSciaHandheldExternalSnapshot.rxValue;
+    txValue = BOARD_SCI_HANDHELD_EXTERNAL_RESPONSE;
+    detail = gBoardSciSciaHandheldExternalSnapshot.detail;
+
+    if((SciaRegs.SCIRXST.bit.RXERROR == 1U) ||
+       (SciaRegs.SCIFFRX.bit.RXFFOVF == 1U))
+    {
+        SciaRegs.SCIFFRX.bit.RXFFOVRCLR = 1U;
+        detail |= BOARD_SCI_DETAIL_RX_ERROR;
+        return BoardSci_FailSciaHandheldExternalTest(statusMask,
+                                                     rxValue,
+                                                     txValue,
+                                                     detail,
+                                                     record);
+    }
+
+    if((SciaRegs.SCIFFRX.bit.RXFFST == 0U) &&
+       (SciaRegs.SCIRXST.bit.RXRDY == 0U))
+    {
+        BoardSci_UpdateSciaHandheldExternalSnapshot(statusMask,
+                                                   rxValue,
+                                                   txValue,
+                                                   detail);
+        BoardSci_UpdateSciaHandheldExternalRunningRecord(statusMask,
+                                                         rxValue,
+                                                         txValue,
+                                                         record);
+        return BOARD_TEST_RESULT_RUNNING;
+    }
+
+    rxBuffer = SciaRegs.SCIRXBUF.all;
+    rxValue = rxBuffer & 0x00FFU;
+    statusMask |= BOARD_SCI_HANDHELD_EXTERNAL_RX_READY;
+    detail |= BOARD_SCI_DETAIL_RX_READY;
+
+    if((rxBuffer & 0xC000U) != 0U)
+    {
+        detail |= BOARD_SCI_DETAIL_RX_ERROR;
+        return BoardSci_FailSciaHandheldExternalTest(statusMask,
+                                                     rxValue,
+                                                     txValue,
+                                                     detail,
+                                                     record);
+    }
+
+    if(rxValue == BOARD_SCI_HANDHELD_EXTERNAL_REQUEST)
+    {
+        statusMask |= BOARD_SCI_HANDHELD_EXTERNAL_RX_EXPECTED;
+        detail |= BOARD_SCI_DETAIL_RX_MATCH;
+    }
+
+    if(SciaRegs.SCIFFTX.bit.TXFFST >= 16U)
+    {
+        detail |= BOARD_SCI_DETAIL_TX_TIMEOUT;
+        return BoardSci_FailSciaHandheldExternalTest(statusMask,
+                                                     rxValue,
+                                                     txValue,
+                                                     detail,
+                                                     record);
+    }
+
+    BoardSci_SetSciaDirection(1U);
+    statusMask |= BOARD_SCI_HANDHELD_EXTERNAL_TX_ENABLE_HIGH;
+    detail |= BOARD_SCI_DETAIL_TX_READY;
+    SciaRegs.SCITXBUF = txValue & 0x00FFU;
+    statusMask |= BOARD_SCI_HANDHELD_EXTERNAL_TX_WRITTEN;
+    detail |= BOARD_SCI_DETAIL_TX_WRITTEN;
+    BoardSci_SciaHandheldExternalState = BOARD_SCI_RS485_STATE_WAIT_TX;
+
+    BoardSci_UpdateSciaHandheldExternalSnapshot(statusMask,
+                                                rxValue,
+                                                txValue,
+                                                detail);
+    BoardSci_UpdateSciaHandheldExternalRunningRecord(statusMask,
+                                                     rxValue,
+                                                     txValue,
+                                                     record);
+    return BOARD_TEST_RESULT_RUNNING;
+}
+
+static BoardTest_Result BoardSci_PollSciaHandheldExternalTxDone(
+    BoardTest_Record *record)
+{
+    BoardTest_U16 statusMask;
+    BoardTest_U16 rxValue;
+    BoardTest_U16 txValue;
+    BoardTest_U16 detail;
+
+    statusMask = gBoardSciSciaHandheldExternalSnapshot.statusMask;
+    rxValue = gBoardSciSciaHandheldExternalSnapshot.rxValue;
+    txValue = gBoardSciSciaHandheldExternalSnapshot.txValue;
+    detail = gBoardSciSciaHandheldExternalSnapshot.detail;
+
+    if((SciaRegs.SCIFFTX.bit.TXFFST != 0U) ||
+       (SciaRegs.SCICTL2.bit.TXEMPTY == 0U))
+    {
+        BoardSci_UpdateSciaHandheldExternalSnapshot(statusMask,
+                                                    rxValue,
+                                                    txValue,
+                                                    detail);
+        BoardSci_UpdateSciaHandheldExternalRunningRecord(statusMask,
+                                                         rxValue,
+                                                         txValue,
+                                                         record);
+        return BOARD_TEST_RESULT_RUNNING;
+    }
+
+    statusMask |= BOARD_SCI_HANDHELD_EXTERNAL_TX_DONE;
+    BoardSci_SetSciaDirection(0U);
+    statusMask |= BOARD_SCI_HANDHELD_EXTERNAL_BACK_TO_RX;
+    BoardSci_SciaHandheldExternalState = BOARD_SCI_RS485_STATE_IDLE;
+
+    BoardSci_UpdateSciaHandheldExternalSnapshot(statusMask,
+                                                rxValue,
+                                                txValue,
+                                                detail);
+    return BoardSci_EvaluateSciaHandheldExternalStatus(statusMask,
+                                                       rxValue,
+                                                       txValue,
+                                                       record);
+}
+
 BoardTest_Result BoardSci_RunLoopbackTest(BoardTest_Record *record)
 {
     BoardTest_U16 statusMask = 0U;
@@ -479,12 +764,240 @@ BoardTest_Result BoardSci_RunRs485ExternalTest(BoardTest_Record *record)
     return BoardSci_PollRs485ExternalTxDone(record);
 }
 
+BoardTest_Result BoardSci_RunSciaHandheldExternalTest(
+    BoardTest_Record *record)
+{
+    if(BoardSci_SciaHandheldExternalState == BOARD_SCI_RS485_STATE_IDLE)
+    {
+        return BoardSci_StartSciaHandheldExternalTest(record);
+    }
+
+    if(BoardSci_SciaHandheldExternalState == BOARD_SCI_RS485_STATE_WAIT_RX)
+    {
+        return BoardSci_PollSciaHandheldExternalRx(record);
+    }
+
+    return BoardSci_PollSciaHandheldExternalTxDone(record);
+}
+
+void BoardSci_EnableRs485ExternalStandby(void)
+{
+    BoardSci_InitScibRs485External();
+    BoardSci_Rs485ExternalState = BOARD_SCI_RS485_STATE_IDLE;
+    BoardSci_Rs485StandbyState = BOARD_SCI_RS485_STATE_IDLE;
+    BoardSci_Rs485StandbyEnabled = 1U;
+    BoardSci_UpdateRs485ExternalSnapshot(
+        BOARD_SCI_RS485_EXTERNAL_CONFIGURED |
+        BOARD_SCI_RS485_EXTERNAL_RX_ENABLE_LOW,
+        0U,
+        BOARD_SCI_RS485_EXTERNAL_RESPONSE,
+        0U);
+}
+
+void BoardSci_DisableRs485ExternalStandby(void)
+{
+    BoardSci_Rs485StandbyEnabled = 0U;
+    BoardSci_Rs485StandbyState = BOARD_SCI_RS485_STATE_IDLE;
+    BoardSci_SetScibDirection(0U);
+}
+
+void BoardSci_ServiceRs485ExternalStandby(
+    BoardTest_Record *record,
+    BoardTest_StandbyServiceStatus *status)
+{
+    BoardTest_U16 statusMask;
+    BoardTest_U16 rxValue;
+    BoardTest_U16 txValue;
+    BoardTest_U16 detail;
+    BoardTest_U16 rxBuffer;
+
+    if(BoardSci_Rs485StandbyEnabled == 0U)
+    {
+        return;
+    }
+
+    if(BoardSci_Rs485ExternalState != BOARD_SCI_RS485_STATE_IDLE)
+    {
+        return;
+    }
+
+    statusMask = gBoardSciRs485ExternalSnapshot.statusMask;
+    rxValue = gBoardSciRs485ExternalSnapshot.rxValue;
+    txValue = BOARD_SCI_RS485_EXTERNAL_RESPONSE;
+    detail = gBoardSciRs485ExternalSnapshot.detail;
+
+    if(record != 0)
+    {
+        if((record->result != BOARD_TEST_RESULT_PASS) &&
+           (BoardSci_Rs485StandbyState == BOARD_SCI_RS485_STATE_IDLE))
+        {
+            BoardSci_UpdateRs485ExternalRunningRecord(
+                BOARD_SCI_RS485_EXTERNAL_CONFIGURED |
+                BOARD_SCI_RS485_EXTERNAL_RX_ENABLE_LOW,
+                rxValue,
+                txValue,
+                record);
+            record->result = BOARD_TEST_RESULT_RUNNING;
+        }
+    }
+
+    if(BoardSci_Rs485StandbyState == BOARD_SCI_RS485_STATE_WAIT_TX)
+    {
+        if((ScibRegs.SCIFFTX.bit.TXFFST != 0U) ||
+           (ScibRegs.SCICTL2.bit.TXEMPTY == 0U))
+        {
+            return;
+        }
+
+        statusMask |= BOARD_SCI_RS485_EXTERNAL_TX_DONE;
+        BoardSci_SetScibDirection(0U);
+        statusMask |= BOARD_SCI_RS485_EXTERNAL_BACK_TO_RX;
+        BoardSci_Rs485StandbyState = BOARD_SCI_RS485_STATE_IDLE;
+        if(status != 0)
+        {
+            status->state = BOARD_TEST_STANDBY_REPLIED;
+            status->replyCount++;
+        }
+        BoardSci_UpdateRs485ExternalSnapshot(statusMask,
+                                             rxValue,
+                                             txValue,
+                                             detail);
+        if(record != 0)
+        {
+            record->result = (BoardTest_U16)
+                BoardSci_EvaluateRs485ExternalStatus(statusMask,
+                                                     rxValue,
+                                                     txValue,
+                                                     record);
+        }
+        return;
+    }
+
+    if((ScibRegs.SCIRXST.bit.RXERROR == 1U) ||
+       (ScibRegs.SCIFFRX.bit.RXFFOVF == 1U))
+    {
+        ScibRegs.SCIFFRX.bit.RXFFOVRCLR = 1U;
+        detail |= BOARD_SCI_DETAIL_RX_ERROR;
+        if(status != 0)
+        {
+            status->state = BOARD_TEST_STANDBY_FAILED;
+            status->errorCode = BOARD_TEST_ERROR_SCI_RS485_EXTERNAL;
+        }
+        BoardSci_UpdateRs485ExternalSnapshot(statusMask,
+                                             rxValue,
+                                             txValue,
+                                             detail);
+        if(record != 0)
+        {
+            record->result = (BoardTest_U16)
+                BoardSci_EvaluateRs485ExternalStatus(statusMask,
+                                                     rxValue,
+                                                     txValue,
+                                                     record);
+        }
+        return;
+    }
+
+    if((ScibRegs.SCIFFRX.bit.RXFFST == 0U) &&
+       (ScibRegs.SCIRXST.bit.RXRDY == 0U))
+    {
+        if((status != 0) &&
+           (status->errorCode == BOARD_TEST_ERROR_NONE))
+        {
+            status->state = BOARD_TEST_STANDBY_WAITING;
+        }
+        return;
+    }
+
+    rxBuffer = ScibRegs.SCIRXBUF.all;
+    rxValue = rxBuffer & 0x00FFU;
+    if(status != 0)
+    {
+        status->state = BOARD_TEST_STANDBY_RECEIVED;
+        status->receiveCount++;
+    }
+    statusMask = BOARD_SCI_RS485_EXTERNAL_CONFIGURED |
+                 BOARD_SCI_RS485_EXTERNAL_RX_ENABLE_LOW |
+                 BOARD_SCI_RS485_EXTERNAL_RX_READY;
+    detail = BOARD_SCI_DETAIL_RX_READY;
+
+    if(((rxBuffer & 0xC000U) == 0U) &&
+       (rxValue == BOARD_SCI_RS485_EXTERNAL_REQUEST))
+    {
+        statusMask |= BOARD_SCI_RS485_EXTERNAL_RX_MATCH;
+        detail |= BOARD_SCI_DETAIL_RX_MATCH;
+
+        if(ScibRegs.SCIFFTX.bit.TXFFST < 16U)
+        {
+            BoardSci_SetScibDirection(1U);
+            statusMask |= BOARD_SCI_RS485_EXTERNAL_TX_ENABLE_HIGH;
+            detail |= BOARD_SCI_DETAIL_TX_READY;
+            ScibRegs.SCITXBUF = txValue & 0x00FFU;
+            statusMask |= BOARD_SCI_RS485_EXTERNAL_TX_WRITTEN;
+            detail |= BOARD_SCI_DETAIL_TX_WRITTEN;
+            BoardSci_Rs485StandbyState = BOARD_SCI_RS485_STATE_WAIT_TX;
+        }
+        else
+        {
+            detail |= BOARD_SCI_DETAIL_TX_TIMEOUT;
+            if(status != 0)
+            {
+                status->state = BOARD_TEST_STANDBY_FAILED;
+                status->errorCode =
+                    BOARD_TEST_ERROR_SCI_RS485_EXTERNAL;
+            }
+        }
+    }
+    else
+    {
+        detail |= BOARD_SCI_DETAIL_RX_ERROR;
+        if(status != 0)
+        {
+            status->state = BOARD_TEST_STANDBY_FAILED;
+            status->errorCode = BOARD_TEST_ERROR_SCI_RS485_EXTERNAL;
+        }
+    }
+
+    BoardSci_UpdateRs485ExternalSnapshot(statusMask,
+                                         rxValue,
+                                         txValue,
+                                         detail);
+    if(record != 0)
+    {
+        BoardSci_UpdateRs485ExternalRunningRecord(statusMask,
+                                                  rxValue,
+                                                  txValue,
+                                                  record);
+        if(BoardSci_Rs485StandbyState != BOARD_SCI_RS485_STATE_WAIT_TX)
+        {
+            record->result = (BoardTest_U16)
+                BoardSci_EvaluateRs485ExternalStatus(statusMask,
+                                                     rxValue,
+                                                     txValue,
+                                                     record);
+        }
+        else
+        {
+            record->result = BOARD_TEST_RESULT_RUNNING;
+        }
+    }
+}
+
 void BoardSci_AbortRs485ExternalTest(void)
 {
     if(BoardSci_Rs485ExternalState != BOARD_SCI_RS485_STATE_IDLE)
     {
         BoardSci_SetScibDirection(0U);
         BoardSci_Rs485ExternalState = BOARD_SCI_RS485_STATE_IDLE;
+    }
+}
+
+void BoardSci_AbortSciaHandheldExternalTest(void)
+{
+    if(BoardSci_SciaHandheldExternalState != BOARD_SCI_RS485_STATE_IDLE)
+    {
+        BoardSci_SetSciaDirection(0U);
+        BoardSci_SciaHandheldExternalState = BOARD_SCI_RS485_STATE_IDLE;
     }
 }
 #endif

@@ -1,5 +1,6 @@
 #include "Board_Ethernet_Test.h"
 #include "Board_Emif_Test.h"
+#include "Board_Host_Protocol.h"
 #include "Board_Pinmap.h"
 
 #ifndef BOARD_TEST_HOST
@@ -67,6 +68,10 @@
 #define BOARD_ETHERNET_TCP_STABILITY_STATE_WAIT_CONNECT 0x0001U
 #define BOARD_ETHERNET_TCP_STABILITY_STATE_WAIT_RX 0x0002U
 #define BOARD_ETHERNET_TCP_STABILITY_STATE_WAIT_SENDOK 0x0003U
+#define BOARD_ETHERNET_TCP_STANDBY_STATE_DISABLED     0x0000U
+#define BOARD_ETHERNET_TCP_STANDBY_STATE_START        0x0001U
+#define BOARD_ETHERNET_TCP_STANDBY_STATE_WAIT_CONNECT 0x0002U
+#define BOARD_ETHERNET_TCP_STANDBY_STATE_WAIT_RX      0x0003U
 
 #define BOARD_ETHERNET_TCP_ECHO_REQUEST_WORD0  0x4254U
 #define BOARD_ETHERNET_TCP_ECHO_REQUEST_WORD1  0x5354U
@@ -159,6 +164,9 @@ static BoardTest_U16 BoardEthernet_TcpEchoState =
 static BoardTest_U16 BoardEthernet_TcpStabilityState =
     BOARD_ETHERNET_TCP_STABILITY_STATE_IDLE;
 static BoardTest_U16 BoardEthernet_TcpStabilityPassCount = 0U;
+static BoardTest_U16 BoardEthernet_TcpStandbyEnabled = 0U;
+static BoardTest_U16 BoardEthernet_TcpStandbyState =
+    BOARD_ETHERNET_TCP_STANDBY_STATE_DISABLED;
 #endif
 
 BoardTest_Result BoardEthernet_EvaluateW5300BasicStatus(
@@ -446,6 +454,50 @@ static BoardTest_U16 BoardEthernet_W5300WaitSocketState(
     }
 
     return status;
+}
+
+static void BoardEthernet_W5300ReadTcpBytes(
+    BoardTest_U16 length,
+    BoardTest_U16 *bytes)
+{
+    BoardTest_U16 index;
+    BoardTest_U16 word;
+
+    for(index = 0U; index < length; index += 2U)
+    {
+        word = BoardEthernet_W5300Read(BOARD_ETHERNET_W5300_REG_S0_RX_FIFO);
+        bytes[index] = (word >> 8U) & 0x00FFU;
+        if((index + 1U) < length)
+        {
+            bytes[index + 1U] = word & 0x00FFU;
+        }
+    }
+}
+
+static void BoardEthernet_W5300WriteTcpBytes(
+    const BoardTest_U16 *bytes,
+    BoardTest_U16 length)
+{
+    BoardTest_U16 index;
+    BoardTest_U16 word;
+
+    for(index = 0U; index < length; index += 2U)
+    {
+        word = (BoardTest_U16)((bytes[index] & 0x00FFU) << 8U);
+        if((index + 1U) < length)
+        {
+            word |= bytes[index + 1U] & 0x00FFU;
+        }
+        BoardEthernet_W5300Write(BOARD_ETHERNET_W5300_REG_S0_TX_FIFO,
+                                 word);
+    }
+
+    BoardEthernet_W5300Write(BOARD_ETHERNET_W5300_REG_S0_TX_WRSR, 0U);
+    BoardEthernet_W5300Write(
+        (BoardTest_U16)(BOARD_ETHERNET_W5300_REG_S0_TX_WRSR + 0x0002U),
+        length);
+    BoardEthernet_W5300Write(BOARD_ETHERNET_W5300_REG_S0_CR,
+                             BOARD_ETHERNET_SOCKET_CMD_SEND);
 }
 
 BoardTest_Result BoardEthernet_RunW5300BasicTest(BoardTest_Record *record)
@@ -1846,5 +1898,297 @@ void BoardEthernet_AbortW5300TcpStabilityTest(void)
         BoardEthernet_TcpStabilityState =
             BOARD_ETHERNET_TCP_STABILITY_STATE_IDLE;
     }
+}
+
+void BoardEthernet_EnableW5300TcpStandby(void)
+{
+    BoardEthernet_TcpStandbyEnabled = 1U;
+    BoardEthernet_TcpStandbyState =
+        BOARD_ETHERNET_TCP_STANDBY_STATE_START;
+}
+
+void BoardEthernet_DisableW5300TcpStandby(void)
+{
+    if((BoardEthernet_TcpStandbyEnabled != 0U) &&
+       (BoardEthernet_TcpStandbyState !=
+        BOARD_ETHERNET_TCP_STANDBY_STATE_START) &&
+       (BoardEthernet_TcpStandbyState !=
+        BOARD_ETHERNET_TCP_STANDBY_STATE_DISABLED))
+    {
+        BoardEthernet_W5300Write(BOARD_ETHERNET_W5300_REG_S0_CR,
+                                 BOARD_ETHERNET_SOCKET_CMD_CLOSE);
+    }
+
+    BoardEthernet_TcpStandbyEnabled = 0U;
+    BoardEthernet_TcpStandbyState =
+        BOARD_ETHERNET_TCP_STANDBY_STATE_DISABLED;
+}
+
+static void BoardEthernet_RestartW5300TcpStandby(
+    BoardTest_StandbyServiceStatus *status,
+    BoardTest_U16 errorCode)
+{
+    BoardEthernet_W5300Write(BOARD_ETHERNET_W5300_REG_S0_CR,
+                             BOARD_ETHERNET_SOCKET_CMD_CLOSE);
+    (void)BoardEthernet_W5300WaitSocketState(
+        BOARD_ETHERNET_SOCKET_SR_CLOSED);
+    BoardEthernet_TcpStandbyState =
+        BOARD_ETHERNET_TCP_STANDBY_STATE_START;
+
+    if(status != 0)
+    {
+        status->state = BOARD_TEST_STANDBY_FAILED;
+        status->errorCode = errorCode;
+    }
+}
+
+static void BoardEthernet_StartW5300TcpStandby(
+    BoardTest_StandbyServiceStatus *status)
+{
+    BoardTest_U16 listenStatus;
+    BoardTest_U16 commonReady;
+
+    commonReady = 0U;
+    BoardEthernet_PrepareW5300Access();
+    BoardEthernet_W5300ConfigureCommon();
+    if((BoardEthernet_W5300Read(BOARD_ETHERNET_W5300_REG_MR) ==
+        BOARD_ETHERNET_W5300_MODE_EXPECTED) &&
+       (BoardEthernet_W5300Read(BOARD_ETHERNET_W5300_REG_RTR) ==
+        BOARD_ETHERNET_W5300_RTR_EXPECTED) &&
+       (BoardEthernet_W5300Read(BOARD_ETHERNET_W5300_REG_RCR) ==
+        BOARD_ETHERNET_W5300_RCR_EXPECTED))
+    {
+        commonReady = 1U;
+    }
+
+    BoardEthernet_W5300Write(BOARD_ETHERNET_W5300_REG_S0_CR,
+                             BOARD_ETHERNET_SOCKET_CMD_CLOSE);
+    (void)BoardEthernet_W5300WaitSocketState(
+        BOARD_ETHERNET_SOCKET_SR_CLOSED);
+    BoardEthernet_W5300ConfigureSocket0Tcp();
+    BoardEthernet_W5300Write(BOARD_ETHERNET_W5300_REG_S0_IR,
+                             BOARD_ETHERNET_SOCKET_IR_RECV |
+                             BOARD_ETHERNET_SOCKET_IR_SENDOK);
+    BoardEthernet_W5300Write(BOARD_ETHERNET_W5300_REG_S0_CR,
+                             BOARD_ETHERNET_SOCKET_CMD_OPEN);
+    (void)BoardEthernet_W5300WaitSocketState(
+        BOARD_ETHERNET_SOCKET_SR_INIT);
+    BoardEthernet_W5300Write(BOARD_ETHERNET_W5300_REG_S0_CR,
+                             BOARD_ETHERNET_SOCKET_CMD_LISTEN);
+    listenStatus = BoardEthernet_W5300WaitSocketState(
+        BOARD_ETHERNET_SOCKET_SR_LISTEN);
+
+    if((commonReady == 0U) ||
+       (BoardEthernet_W5300SocketState(listenStatus) !=
+        BOARD_ETHERNET_SOCKET_SR_LISTEN))
+    {
+        BoardEthernet_TcpStandbyState =
+            BOARD_ETHERNET_TCP_STANDBY_STATE_DISABLED;
+        if(status != 0)
+        {
+            status->state = BOARD_TEST_STANDBY_FAILED;
+            status->errorCode = BOARD_TEST_ERROR_ETHERNET_TCP_ECHO;
+        }
+        return;
+    }
+
+    BoardEthernet_TcpStandbyState =
+        BOARD_ETHERNET_TCP_STANDBY_STATE_WAIT_CONNECT;
+    if(status != 0)
+    {
+        status->state = BOARD_TEST_STANDBY_WAITING;
+    }
+}
+
+static void BoardEthernet_ServiceW5300TcpStandbyRx(
+    BoardTest_StandbyServiceStatus *status)
+{
+    BoardTest_U16 socketStatus;
+    BoardTest_U16 socketState;
+    BoardTest_U16 rxFrameLength;
+    BoardTest_U16 rxWord0;
+    BoardTest_U16 rxWord1;
+    BoardTest_U16 request[BOARD_HOST_PROTOCOL_REQUEST_SIZE];
+    BoardTest_U16 response[BOARD_HOST_PROTOCOL_RESPONSE_SIZE];
+    BoardTest_U16 responseLength;
+    BoardTest_U32 rxByteCount;
+    BoardTest_U32 txFree;
+
+    socketStatus = BoardEthernet_W5300Socket0Status();
+    socketState = BoardEthernet_W5300SocketState(socketStatus);
+    if((socketState == BOARD_ETHERNET_SOCKET_SR_CLOSE_WAIT) ||
+       (socketState == BOARD_ETHERNET_SOCKET_SR_CLOSED))
+    {
+        BoardEthernet_W5300Write(BOARD_ETHERNET_W5300_REG_S0_CR,
+                                 BOARD_ETHERNET_SOCKET_CMD_CLOSE);
+        BoardEthernet_TcpStandbyState =
+            BOARD_ETHERNET_TCP_STANDBY_STATE_START;
+        return;
+    }
+
+    if(socketState != BOARD_ETHERNET_SOCKET_SR_ESTABLISHED)
+    {
+        BoardEthernet_RestartW5300TcpStandby(
+            status,
+            BOARD_TEST_ERROR_ETHERNET_TCP_ECHO);
+        return;
+    }
+
+    rxByteCount = BoardEthernet_W5300SocketByteCount(
+        BOARD_ETHERNET_W5300_REG_S0_RX_RSR);
+    if(rxByteCount < ((BoardTest_U32)BOARD_ETHERNET_TCP_ECHO_PAYLOAD_BYTES +
+                      2UL))
+    {
+        if((status != 0) &&
+           (status->errorCode == BOARD_TEST_ERROR_NONE))
+        {
+            status->state = BOARD_TEST_STANDBY_WAITING;
+        }
+        return;
+    }
+
+    rxFrameLength = BoardEthernet_W5300Read(
+        BOARD_ETHERNET_W5300_REG_S0_RX_FIFO);
+    if(rxFrameLength > 64U)
+    {
+        BoardEthernet_RestartW5300TcpStandby(
+            status,
+            BOARD_TEST_ERROR_ETHERNET_TCP_ECHO);
+        return;
+    }
+
+    responseLength = 0U;
+    if(rxFrameLength == BOARD_ETHERNET_TCP_ECHO_PAYLOAD_BYTES)
+    {
+        BoardEthernet_W5300ReadTcpEchoPayload(rxFrameLength,
+                                              &rxWord0,
+                                              &rxWord1);
+    }
+    else if(rxFrameLength == BOARD_HOST_PROTOCOL_REQUEST_SIZE)
+    {
+        BoardEthernet_W5300ReadTcpBytes(rxFrameLength, request);
+        rxWord0 = (BoardTest_U16)((request[0U] << 8U) | request[1U]);
+        rxWord1 = (BoardTest_U16)((request[2U] << 8U) | request[3U]);
+        BoardHostProtocol_HandleRequest(request,
+                                        rxFrameLength,
+                                        response,
+                                        &responseLength);
+    }
+    else
+    {
+        BoardEthernet_RestartW5300TcpStandby(
+            status,
+            BOARD_TEST_ERROR_ETHERNET_TCP_ECHO);
+        return;
+    }
+    BoardEthernet_W5300Write(BOARD_ETHERNET_W5300_REG_S0_IR,
+                             BOARD_ETHERNET_SOCKET_IR_RECV);
+    BoardEthernet_W5300Write(BOARD_ETHERNET_W5300_REG_S0_CR,
+                             BOARD_ETHERNET_SOCKET_CMD_RECV);
+    if(status != 0)
+    {
+        status->state = BOARD_TEST_STANDBY_RECEIVED;
+        status->receiveCount++;
+    }
+
+    if((rxFrameLength == BOARD_ETHERNET_TCP_ECHO_PAYLOAD_BYTES) &&
+       ((rxWord0 != BOARD_ETHERNET_TCP_ECHO_REQUEST_WORD0) ||
+        (rxWord1 != BOARD_ETHERNET_TCP_ECHO_REQUEST_WORD1)))
+    {
+        BoardEthernet_RestartW5300TcpStandby(
+            status,
+            BOARD_TEST_ERROR_ETHERNET_TCP_ECHO);
+        return;
+    }
+
+    txFree = BoardEthernet_W5300SocketByteCount(
+        BOARD_ETHERNET_W5300_REG_S0_TX_FSR);
+    if(((rxFrameLength == BOARD_ETHERNET_TCP_ECHO_PAYLOAD_BYTES) &&
+        (txFree < BOARD_ETHERNET_TCP_ECHO_PAYLOAD_BYTES)) ||
+       ((rxFrameLength == BOARD_HOST_PROTOCOL_REQUEST_SIZE) &&
+        (txFree < responseLength)))
+    {
+        BoardEthernet_RestartW5300TcpStandby(
+            status,
+            BOARD_TEST_ERROR_ETHERNET_TCP_ECHO);
+        return;
+    }
+
+    BoardEthernet_W5300Write(BOARD_ETHERNET_W5300_REG_S0_IR,
+                             BOARD_ETHERNET_SOCKET_IR_SENDOK);
+    if(rxFrameLength == BOARD_ETHERNET_TCP_ECHO_PAYLOAD_BYTES)
+    {
+        BoardEthernet_W5300Write(BOARD_ETHERNET_W5300_REG_S0_TX_FIFO,
+                                 BOARD_ETHERNET_TCP_ECHO_RESPONSE_WORD0);
+        BoardEthernet_W5300Write(BOARD_ETHERNET_W5300_REG_S0_TX_FIFO,
+                                 BOARD_ETHERNET_TCP_ECHO_RESPONSE_WORD1);
+        BoardEthernet_W5300Write(BOARD_ETHERNET_W5300_REG_S0_TX_WRSR, 0U);
+        BoardEthernet_W5300Write(
+            (BoardTest_U16)(BOARD_ETHERNET_W5300_REG_S0_TX_WRSR + 0x0002U),
+            BOARD_ETHERNET_TCP_ECHO_PAYLOAD_BYTES);
+        BoardEthernet_W5300Write(BOARD_ETHERNET_W5300_REG_S0_CR,
+                                 BOARD_ETHERNET_SOCKET_CMD_SEND);
+    }
+    else
+    {
+        BoardEthernet_W5300WriteTcpBytes(response, responseLength);
+    }
+    if(status != 0)
+    {
+        status->state = BOARD_TEST_STANDBY_REPLIED;
+        status->replyCount++;
+    }
+    BoardEthernet_TcpStandbyState =
+        BOARD_ETHERNET_TCP_STANDBY_STATE_WAIT_RX;
+}
+
+void BoardEthernet_ServiceW5300TcpStandby(
+    BoardTest_StandbyServiceStatus *status)
+{
+    BoardTest_U16 socketStatus;
+    BoardTest_U16 socketState;
+
+    if(BoardEthernet_TcpStandbyEnabled == 0U)
+    {
+        return;
+    }
+
+    if(BoardEthernet_TcpStandbyState ==
+       BOARD_ETHERNET_TCP_STANDBY_STATE_START)
+    {
+        BoardEthernet_StartW5300TcpStandby(status);
+        return;
+    }
+
+    if(BoardEthernet_TcpStandbyState ==
+       BOARD_ETHERNET_TCP_STANDBY_STATE_WAIT_CONNECT)
+    {
+        socketStatus = BoardEthernet_W5300Socket0Status();
+        socketState = BoardEthernet_W5300SocketState(socketStatus);
+        if(socketState == BOARD_ETHERNET_SOCKET_SR_ESTABLISHED)
+        {
+            BoardEthernet_TcpStandbyState =
+                BOARD_ETHERNET_TCP_STANDBY_STATE_WAIT_RX;
+            if((status != 0) &&
+               (status->errorCode == BOARD_TEST_ERROR_NONE))
+            {
+                status->state = BOARD_TEST_STANDBY_WAITING;
+            }
+        }
+        else if(socketState == BOARD_ETHERNET_SOCKET_SR_CLOSED)
+        {
+            BoardEthernet_TcpStandbyState =
+                BOARD_ETHERNET_TCP_STANDBY_STATE_START;
+        }
+        return;
+    }
+
+    if(BoardEthernet_TcpStandbyState ==
+       BOARD_ETHERNET_TCP_STANDBY_STATE_WAIT_RX)
+    {
+        BoardEthernet_ServiceW5300TcpStandbyRx(status);
+        return;
+    }
+
 }
 #endif

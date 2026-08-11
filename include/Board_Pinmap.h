@@ -87,7 +87,8 @@
 /* SCI-A/SCI-B are connected through RS-485 transceivers. */
 #define BOARD_PIN_SCIA_DIRECTION          133U
 #define BOARD_PIN_SCIA_TX                 135U
-#define BOARD_PIN_SCIA_RX                 137U
+/* F28377D maps SCIRXDA to GPIO136. The pin table row lists GPIO137. */
+#define BOARD_PIN_SCIA_RX                 136U
 #define BOARD_PIN_SCIB_DIRECTION          11U
 #define BOARD_PIN_SCIB_TX                 14U
 #define BOARD_PIN_SCIB_RX                 15U

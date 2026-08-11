@@ -1,11 +1,9 @@
 #include "Board_Can_Test.h"
+#include "Board_Profile.h"
 
 #ifndef BOARD_TEST_HOST
 #include "F28x_Project.h"
-#include "Board_Pinmap.h"
 #endif
-
-#define BOARD_CAN_STATUS_ERROR_MASK    0x01E0U
 
 volatile BoardCan_LoopbackSnapshot gBoardCanLoopbackSnapshot =
 {
@@ -31,6 +29,15 @@ volatile BoardCan_ExternalSnapshot gBoardCanExternalSnapshot =
     0U,
     0U,
     0U,
+    0U
+};
+
+volatile BoardCan_PinSnapshot gBoardCanPinSnapshot =
+{
+    BOARD_PROFILE_PIN_UNUSED,
+    BOARD_PROFILE_PIN_UNUSED,
+    BOARD_PROFILE_PIN_UNUSED,
+    BOARD_PROFILE_PIN_UNUSED,
     0U
 };
 
@@ -130,6 +137,10 @@ BoardTest_Result BoardCan_EvaluateExternalStatus(BoardTest_U16 statusMask,
 #define BOARD_CAN_ES_BOFF              0x0080U
 #define BOARD_CAN_ES_PER               0x0100U
 
+/* EWARN can be left by transient/no-ACK bus activity; do not block RX standby. */
+#define BOARD_CAN_STATUS_ERROR_MASK \
+    (BOARD_CAN_ES_EPASS | BOARD_CAN_ES_BOFF | BOARD_CAN_ES_PER)
+
 #define BOARD_CAN_TEST_SILENT          0x0008U
 #define BOARD_CAN_TEST_LBACK           0x0010U
 
@@ -170,6 +181,9 @@ typedef enum
 } BoardCan_ExternalState;
 
 static BoardCan_ExternalState BoardCan_ExternalTestState =
+    BOARD_CAN_EXTERNAL_STATE_IDLE;
+static BoardTest_U16 BoardCan_ExternalStandbyEnabled = 0U;
+static BoardCan_ExternalState BoardCan_ExternalStandbyState =
     BOARD_CAN_EXTERNAL_STATE_IDLE;
 
 #define BoardCan_Reg16(address)        (*((volatile Uint16 *)(address)))
@@ -653,16 +667,60 @@ static BoardTest_U16 BoardCan_ExternalErrorFree(BoardTest_U16 errorStatus)
     return ((errorStatus & BOARD_CAN_STATUS_ERROR_MASK) == 0U) ? 1U : 0U;
 }
 
+static BoardTest_U16 BoardCan_ConfigureExternalPins(void)
+{
+    const BoardProfile_HardwareDescriptor *hardware;
+
+    gBoardCanPinSnapshot.valid = 0U;
+    gBoardCanPinSnapshot.txGpio = BOARD_PROFILE_PIN_UNUSED;
+    gBoardCanPinSnapshot.rxGpio = BOARD_PROFILE_PIN_UNUSED;
+    gBoardCanPinSnapshot.txMux = BOARD_PROFILE_PIN_UNUSED;
+    gBoardCanPinSnapshot.rxMux = BOARD_PROFILE_PIN_UNUSED;
+
+    hardware = BoardProfile_GetCurrentHardware();
+    if((BoardProfile_IsConfirmed() == 0U) ||
+       (hardware == 0) ||
+       ((hardware->implementedCapabilities & BOARD_PROFILE_CAP_CAN_B) ==
+        0UL) ||
+       (hardware->pins.canBTransmit == BOARD_PROFILE_PIN_UNUSED) ||
+       (hardware->pins.canBReceive == BOARD_PROFILE_PIN_UNUSED) ||
+       (hardware->pins.canBTransmitMux == BOARD_PROFILE_PIN_UNUSED) ||
+       (hardware->pins.canBReceiveMux == BOARD_PROFILE_PIN_UNUSED))
+    {
+        return 0U;
+    }
+
+    gBoardCanPinSnapshot.txGpio = hardware->pins.canBTransmit;
+    gBoardCanPinSnapshot.rxGpio = hardware->pins.canBReceive;
+    gBoardCanPinSnapshot.txMux = hardware->pins.canBTransmitMux;
+    gBoardCanPinSnapshot.rxMux = hardware->pins.canBReceiveMux;
+
+    GPIO_SetupPinMux(gBoardCanPinSnapshot.rxGpio,
+                     GPIO_MUX_CPU1,
+                     gBoardCanPinSnapshot.rxMux);
+    GPIO_SetupPinOptions(gBoardCanPinSnapshot.rxGpio,
+                         GPIO_INPUT,
+                         GPIO_ASYNC);
+    GPIO_SetupPinMux(gBoardCanPinSnapshot.txGpio,
+                     GPIO_MUX_CPU1,
+                     gBoardCanPinSnapshot.txMux);
+    GPIO_SetupPinOptions(gBoardCanPinSnapshot.txGpio,
+                         GPIO_OUTPUT,
+                         GPIO_PUSHPULL);
+    gBoardCanPinSnapshot.valid = 1U;
+    return 1U;
+}
+
 static BoardTest_U16 BoardCan_InitExternalCanb(void)
 {
     BoardTest_U16 statusMask;
 
     statusMask = 0U;
 
-    GPIO_SetupPinMux(BOARD_PIN_CANB_RX, GPIO_MUX_CPU1, 2U);
-    GPIO_SetupPinOptions(BOARD_PIN_CANB_RX, GPIO_INPUT, GPIO_ASYNC);
-    GPIO_SetupPinMux(BOARD_PIN_CANB_TX, GPIO_MUX_CPU1, 2U);
-    GPIO_SetupPinOptions(BOARD_PIN_CANB_TX, GPIO_OUTPUT, GPIO_PUSHPULL);
+    if(BoardCan_ConfigureExternalPins() == 0U)
+    {
+        return statusMask;
+    }
 
     EALLOW;
     DevCfgRegs.CPUSEL8.bit.CAN_B = 0U;
@@ -978,6 +1036,365 @@ BoardTest_Result BoardCan_RunExternalTest(BoardTest_Record *record)
     }
 
     return BoardCan_PollExternalTx(record);
+}
+
+BoardTest_U16 BoardCan_EnableExternalStandby(void)
+{
+    BoardTest_U16 statusMask;
+    BoardTest_U16 errorStatus;
+
+    statusMask = BoardCan_InitExternalCanb();
+    errorStatus = BoardCan_Reg16(BOARD_CAN_CANB_BASE + BOARD_CAN_O_ES);
+    if(BoardCan_ExternalErrorFree(errorStatus) != 0U)
+    {
+        statusMask |= BOARD_CAN_EXTERNAL_NO_ERROR;
+    }
+
+    BoardCan_ExternalTestState = BOARD_CAN_EXTERNAL_STATE_IDLE;
+    BoardCan_ExternalStandbyState = BOARD_CAN_EXTERNAL_STATE_WAIT_RX;
+    BoardCan_ExternalStandbyEnabled = 1U;
+    BoardCan_UpdateExternalSnapshot(statusMask,
+                                    errorStatus,
+                                    0UL,
+                                    0U,
+                                    0UL,
+                                    BOARD_CAN_EXTERNAL_RESPONSE_ID,
+                                    BOARD_CAN_EXTERNAL_REQUEST_PATTERN);
+
+    if((statusMask & (BOARD_CAN_EXTERNAL_CONFIGURED |
+                      BOARD_CAN_EXTERNAL_RX_OBJECT_READY)) !=
+       (BOARD_CAN_EXTERNAL_CONFIGURED |
+        BOARD_CAN_EXTERNAL_RX_OBJECT_READY))
+    {
+        BoardCan_ExternalStandbyEnabled = 0U;
+        BoardCan_ExternalStandbyState = BOARD_CAN_EXTERNAL_STATE_IDLE;
+        return 0U;
+    }
+
+    return 1U;
+}
+
+void BoardCan_DisableExternalStandby(void)
+{
+    if((BoardCan_ExternalStandbyEnabled != 0U) ||
+       (BoardCan_ExternalStandbyState != BOARD_CAN_EXTERNAL_STATE_IDLE))
+    {
+        BoardCan_Reg16(BOARD_CAN_CANB_BASE + BOARD_CAN_O_CTL) =
+            BOARD_CAN_CTL_INIT;
+    }
+
+    BoardCan_ExternalStandbyEnabled = 0U;
+    BoardCan_ExternalStandbyState = BOARD_CAN_EXTERNAL_STATE_IDLE;
+}
+
+void BoardCan_ServiceExternalStandby(
+    BoardTest_Record *record,
+    BoardTest_StandbyServiceStatus *status)
+{
+    BoardTest_U16 statusMask;
+    BoardTest_U16 errorStatus;
+    BoardTest_U32 rxMsgId;
+    BoardTest_U16 rxLength;
+    BoardTest_U32 rxData;
+    BoardTest_U32 newData;
+    BoardTest_U32 txRequest;
+
+    if(BoardCan_ExternalStandbyEnabled == 0U)
+    {
+        return;
+    }
+
+    if(BoardCan_ExternalTestState != BOARD_CAN_EXTERNAL_STATE_IDLE)
+    {
+        return;
+    }
+
+    if(BoardCan_ExternalStandbyState == BOARD_CAN_EXTERNAL_STATE_IDLE)
+    {
+        BoardCan_ExternalStandbyState = BOARD_CAN_EXTERNAL_STATE_WAIT_RX;
+    }
+
+    errorStatus = BoardCan_Reg16(BOARD_CAN_CANB_BASE + BOARD_CAN_O_ES);
+    rxMsgId = gBoardCanExternalSnapshot.rxMsgId;
+    rxLength = gBoardCanExternalSnapshot.rxLength;
+    rxData = ((BoardTest_U32)gBoardCanExternalSnapshot.rxHigh << 16U) |
+             (BoardTest_U32)gBoardCanExternalSnapshot.rxLow;
+
+    if(BoardCan_ExternalStandbyState == BOARD_CAN_EXTERNAL_STATE_WAIT_TX)
+    {
+        statusMask = gBoardCanExternalSnapshot.statusMask;
+        if(BoardCan_ExternalErrorFree(errorStatus) != 0U)
+        {
+            statusMask |= BOARD_CAN_EXTERNAL_NO_ERROR;
+        }
+        else
+        {
+            BoardCan_ExternalStandbyState = BOARD_CAN_EXTERNAL_STATE_WAIT_RX;
+            if(status != 0)
+            {
+                status->state = BOARD_TEST_STANDBY_FAILED;
+                status->errorCode = BOARD_TEST_ERROR_CAN_EXTERNAL;
+            }
+            BoardCan_UpdateExternalSnapshot(
+                statusMask,
+                errorStatus,
+                rxMsgId,
+                rxLength,
+                rxData,
+                BOARD_CAN_EXTERNAL_RESPONSE_ID,
+                BOARD_CAN_EXTERNAL_REQUEST_PATTERN);
+            if(record != 0)
+            {
+                record->result = (BoardTest_U16)
+                    BoardCan_EvaluateExternalStatus(
+                        statusMask,
+                        rxMsgId,
+                        rxLength,
+                        rxData,
+                        BOARD_CAN_EXTERNAL_RESPONSE_ID,
+                        BOARD_CAN_EXTERNAL_REQUEST_PATTERN,
+                        errorStatus,
+                        record);
+            }
+            return;
+        }
+
+        txRequest = BoardCan_Read32(BOARD_CAN_CANB_BASE +
+                                    BOARD_CAN_O_TXRQ_21);
+        if(((txRequest & BOARD_CAN_OBJECT1_MASK) != 0UL) ||
+           ((errorStatus & BOARD_CAN_ES_TXOK) == 0U))
+        {
+            BoardCan_UpdateExternalSnapshot(
+                statusMask,
+                errorStatus,
+                rxMsgId,
+                rxLength,
+                rxData,
+                BOARD_CAN_EXTERNAL_RESPONSE_ID,
+                BOARD_CAN_EXTERNAL_REQUEST_PATTERN);
+            if(record != 0)
+            {
+                BoardCan_UpdateExternalRunningRecord(statusMask,
+                                                     rxData,
+                                                     record);
+                record->result = BOARD_TEST_RESULT_RUNNING;
+            }
+            return;
+        }
+
+        statusMask |= BOARD_CAN_EXTERNAL_TX_OK;
+        BoardCan_ExternalStandbyState = BOARD_CAN_EXTERNAL_STATE_WAIT_RX;
+        if(status != 0)
+        {
+            status->state = BOARD_TEST_STANDBY_REPLIED;
+            status->replyCount++;
+        }
+        BoardCan_UpdateExternalSnapshot(statusMask,
+                                        errorStatus,
+                                        rxMsgId,
+                                        rxLength,
+                                        rxData,
+                                        BOARD_CAN_EXTERNAL_RESPONSE_ID,
+                                        BOARD_CAN_EXTERNAL_REQUEST_PATTERN);
+        if(record != 0)
+        {
+            record->result = (BoardTest_U16)
+                BoardCan_EvaluateExternalStatus(
+                    statusMask,
+                    rxMsgId,
+                    rxLength,
+                    rxData,
+                    BOARD_CAN_EXTERNAL_RESPONSE_ID,
+                    BOARD_CAN_EXTERNAL_REQUEST_PATTERN,
+                    errorStatus,
+                    record);
+        }
+        return;
+    }
+
+    statusMask = gBoardCanExternalSnapshot.statusMask &
+                 (BOARD_CAN_EXTERNAL_CONFIGURED |
+                  BOARD_CAN_EXTERNAL_RX_OBJECT_READY);
+    if(BoardCan_ExternalErrorFree(errorStatus) != 0U)
+    {
+        statusMask |= BOARD_CAN_EXTERNAL_NO_ERROR;
+    }
+
+    if((statusMask & (BOARD_CAN_EXTERNAL_CONFIGURED |
+                      BOARD_CAN_EXTERNAL_RX_OBJECT_READY |
+                      BOARD_CAN_EXTERNAL_NO_ERROR)) !=
+       (BOARD_CAN_EXTERNAL_CONFIGURED |
+        BOARD_CAN_EXTERNAL_RX_OBJECT_READY |
+        BOARD_CAN_EXTERNAL_NO_ERROR))
+    {
+        if(status != 0)
+        {
+            status->state = BOARD_TEST_STANDBY_FAILED;
+            status->errorCode = BOARD_TEST_ERROR_CAN_EXTERNAL;
+        }
+        BoardCan_UpdateExternalSnapshot(statusMask,
+                                        errorStatus,
+                                        rxMsgId,
+                                        rxLength,
+                                        rxData,
+                                        BOARD_CAN_EXTERNAL_RESPONSE_ID,
+                                        BOARD_CAN_EXTERNAL_REQUEST_PATTERN);
+        if(record != 0)
+        {
+            record->result = (BoardTest_U16)
+                BoardCan_EvaluateExternalStatus(
+                    statusMask,
+                    rxMsgId,
+                    rxLength,
+                    rxData,
+                    BOARD_CAN_EXTERNAL_RESPONSE_ID,
+                    BOARD_CAN_EXTERNAL_REQUEST_PATTERN,
+                    errorStatus,
+                    record);
+        }
+        return;
+    }
+
+    newData = BoardCan_Read32(BOARD_CAN_CANB_BASE + BOARD_CAN_O_NDAT_21);
+    if((newData & BOARD_CAN_OBJECT2_MASK) == 0UL)
+    {
+        if((status != 0) &&
+           (status->errorCode == BOARD_TEST_ERROR_NONE))
+        {
+            status->state = BOARD_TEST_STANDBY_WAITING;
+        }
+        BoardCan_UpdateExternalSnapshot(statusMask,
+                                        errorStatus,
+                                        rxMsgId,
+                                        rxLength,
+                                        rxData,
+                                        BOARD_CAN_EXTERNAL_RESPONSE_ID,
+                                        BOARD_CAN_EXTERNAL_REQUEST_PATTERN);
+        if((record != 0) && (record->result != BOARD_TEST_RESULT_PASS))
+        {
+            BoardCan_UpdateExternalRunningRecord(statusMask, rxData, record);
+            record->result = BOARD_TEST_RESULT_RUNNING;
+        }
+        return;
+    }
+
+    if(BoardCan_ReadExternalRxObject(&rxMsgId, &rxLength, &rxData) == 0U)
+    {
+        if(status != 0)
+        {
+            status->state = BOARD_TEST_STANDBY_FAILED;
+            status->errorCode = BOARD_TEST_ERROR_CAN_EXTERNAL;
+        }
+        BoardCan_UpdateExternalSnapshot(statusMask,
+                                        errorStatus,
+                                        rxMsgId,
+                                        rxLength,
+                                        rxData,
+                                        BOARD_CAN_EXTERNAL_RESPONSE_ID,
+                                        BOARD_CAN_EXTERNAL_REQUEST_PATTERN);
+        if(record != 0)
+        {
+            record->result = (BoardTest_U16)
+                BoardCan_EvaluateExternalStatus(
+                    statusMask,
+                    rxMsgId,
+                    rxLength,
+                    rxData,
+                    BOARD_CAN_EXTERNAL_RESPONSE_ID,
+                    BOARD_CAN_EXTERNAL_REQUEST_PATTERN,
+                    errorStatus,
+                    record);
+        }
+        return;
+    }
+
+    statusMask |= BOARD_CAN_EXTERNAL_RX_FRAME_READY;
+    if(status != 0)
+    {
+        status->state = BOARD_TEST_STANDBY_RECEIVED;
+        status->receiveCount++;
+    }
+    if((rxMsgId == BOARD_CAN_EXTERNAL_REQUEST_ID) &&
+       (rxLength == BOARD_CAN_EXTERNAL_DATA_BYTES) &&
+       (rxData == BOARD_CAN_EXTERNAL_REQUEST_PATTERN))
+    {
+        statusMask |= BOARD_CAN_EXTERNAL_RX_PATTERN_MATCH;
+    }
+    else
+    {
+        if(status != 0)
+        {
+            status->state = BOARD_TEST_STANDBY_FAILED;
+            status->errorCode = BOARD_TEST_ERROR_CAN_EXTERNAL;
+        }
+        BoardCan_UpdateExternalSnapshot(statusMask,
+                                        errorStatus,
+                                        rxMsgId,
+                                        rxLength,
+                                        rxData,
+                                        BOARD_CAN_EXTERNAL_RESPONSE_ID,
+                                        BOARD_CAN_EXTERNAL_REQUEST_PATTERN);
+        if(record != 0)
+        {
+            record->result = (BoardTest_U16)
+                BoardCan_EvaluateExternalStatus(
+                    statusMask,
+                    rxMsgId,
+                    rxLength,
+                    rxData,
+                    BOARD_CAN_EXTERNAL_RESPONSE_ID,
+                    BOARD_CAN_EXTERNAL_REQUEST_PATTERN,
+                    errorStatus,
+                    record);
+        }
+        return;
+    }
+
+    if(BoardCan_SendExternalTxObject(BOARD_CAN_EXTERNAL_REQUEST_PATTERN,
+                                     BOARD_CAN_EXTERNAL_DATA_BYTES) == 0U)
+    {
+        if(status != 0)
+        {
+            status->state = BOARD_TEST_STANDBY_FAILED;
+            status->errorCode = BOARD_TEST_ERROR_CAN_EXTERNAL;
+        }
+        BoardCan_UpdateExternalSnapshot(statusMask,
+                                        errorStatus,
+                                        rxMsgId,
+                                        rxLength,
+                                        rxData,
+                                        BOARD_CAN_EXTERNAL_RESPONSE_ID,
+                                        BOARD_CAN_EXTERNAL_REQUEST_PATTERN);
+        if(record != 0)
+        {
+            record->result = (BoardTest_U16)
+                BoardCan_EvaluateExternalStatus(
+                    statusMask,
+                    rxMsgId,
+                    rxLength,
+                    rxData,
+                    BOARD_CAN_EXTERNAL_RESPONSE_ID,
+                    BOARD_CAN_EXTERNAL_REQUEST_PATTERN,
+                    errorStatus,
+                    record);
+        }
+        return;
+    }
+
+    statusMask |= BOARD_CAN_EXTERNAL_TX_WRITTEN;
+    BoardCan_ExternalStandbyState = BOARD_CAN_EXTERNAL_STATE_WAIT_TX;
+    BoardCan_UpdateExternalSnapshot(statusMask,
+                                    errorStatus,
+                                    rxMsgId,
+                                    rxLength,
+                                    rxData,
+                                    BOARD_CAN_EXTERNAL_RESPONSE_ID,
+                                    BOARD_CAN_EXTERNAL_REQUEST_PATTERN);
+    if(record != 0)
+    {
+        BoardCan_UpdateExternalRunningRecord(statusMask, rxData, record);
+        record->result = BOARD_TEST_RESULT_RUNNING;
+    }
 }
 
 void BoardCan_AbortExternalTest(void)

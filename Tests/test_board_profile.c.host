@@ -1,0 +1,168 @@
+#include <assert.h>
+#include <stdio.h>
+
+#include "Board_Profile.h"
+
+static void AssertAllBoardTypesSelectable(BoardTest_U16 ethernetInterface)
+{
+    static const BoardTest_U16 profileIds[] =
+    {
+        BOARD_PROFILE_ID_SYSTEM_MASTER,
+        BOARD_PROFILE_ID_LOW_VOLTAGE_INVERTER,
+        BOARD_PROFILE_ID_LOW_ALTITUDE_UNIFIED
+    };
+    BoardTest_U16 index;
+
+    BoardProfile_Init(ethernetInterface);
+    for(index = 0U; index < 3U; index++)
+    {
+        assert(BoardProfile_Select(profileIds[index]) ==
+               BOARD_TEST_RESULT_PASS);
+        assert(gBoardProfileRuntimeStatus.selectedEthernetInterface ==
+               ethernetInterface);
+        assert(BoardProfile_Confirm() == BOARD_TEST_RESULT_PASS);
+        BoardProfile_Clear();
+    }
+}
+
+int main(void)
+{
+    const BoardProfile_Descriptor *profile;
+    const BoardProfile_HardwareDescriptor *hardware;
+
+    AssertAllBoardTypesSelectable(BOARD_PROFILE_ETHERNET_EMIF_W5300);
+    AssertAllBoardTypesSelectable(BOARD_PROFILE_ETHERNET_SPIC_W5500);
+
+    BoardProfile_Init(BOARD_PROFILE_ETHERNET_EMIF_W5300);
+    assert(BoardProfile_GetCurrent() == 0);
+    assert(BoardProfile_Select(BOARD_PROFILE_ID_LOW_VOLTAGE_INVERTER) ==
+           BOARD_TEST_RESULT_PASS);
+    assert(BoardProfile_Confirm() == BOARD_TEST_RESULT_PASS);
+    profile = BoardProfile_GetCurrent();
+    hardware = BoardProfile_GetCurrentHardware();
+    assert(profile != 0);
+    assert(hardware != 0);
+    assert(profile->id == BOARD_PROFILE_ID_LOW_VOLTAGE_INVERTER);
+    assert(hardware->boardId == BOARD_PROFILE_ID_LOW_VOLTAGE_INVERTER);
+    assert(hardware->ethernetInterface == BOARD_PROFILE_ETHERNET_EMIF_W5300);
+    assert(hardware->pinMapRevision == 2U);
+    assert(hardware->pinMapValidated == 0U);
+    assert(hardware->pins.sciaTransmit == 8U);
+    assert(hardware->pins.sciaReceive == 9U);
+    assert(hardware->pins.scibTransmit == 10U);
+    assert(hardware->pins.scibReceive == 11U);
+    assert(hardware->pins.canBTransmit == 6U);
+    assert(hardware->pins.canBReceive == 7U);
+    assert(hardware->pins.canBTransmitMux == 6U);
+    assert(hardware->pins.canBReceiveMux == 6U);
+    assert(hardware->pins.led1 == 89U);
+    assert(hardware->pins.led2 == 88U);
+    assert(gBoardProfileRuntimeStatus.selectedEthernetInterface ==
+           BOARD_PROFILE_ETHERNET_EMIF_W5300);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_SYS_CLOCK) != 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_ADC_BASIC) == 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_GPIO) == 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_SPIB_INTERNAL) == 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_FPGA_EMIF2_BASIC) == 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_CAN_HOST) != 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_CAN_EXTERNAL) != 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_ETHERNET) != 0U);
+    assert((BoardProfile_GetEffectiveCapabilities() &
+            BOARD_PROFILE_CAP_EMIF_W5300) != 0UL);
+
+    BoardProfile_SetDetectedEthernet(BOARD_PROFILE_ETHERNET_SPIC_W5500);
+    assert(gBoardProfileRuntimeStatus.detectedEthernetInterface ==
+           BOARD_PROFILE_ETHERNET_EMIF_W5300);
+
+    BoardProfile_Clear();
+    assert(BoardProfile_Select(BOARD_PROFILE_ID_SYSTEM_MASTER) ==
+           BOARD_TEST_RESULT_PASS);
+    assert(BoardProfile_Confirm() == BOARD_TEST_RESULT_PASS);
+    hardware = BoardProfile_GetCurrentHardware();
+    assert(hardware != 0);
+    assert(hardware->boardId == BOARD_PROFILE_ID_SYSTEM_MASTER);
+    assert(hardware->pinMapRevision == 1U);
+    assert(hardware->pinMapValidated == 1U);
+    assert(hardware->pins.led1 == 144U);
+    assert(hardware->pins.led2 == 143U);
+    assert(hardware->pins.canBTransmit == 12U);
+    assert(hardware->pins.canBReceive == 13U);
+    assert(hardware->pins.canBTransmitMux == 2U);
+    assert(hardware->pins.canBReceiveMux == 2U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_ADC_BASIC) != 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_GPIO) != 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_SPIB_INTERNAL) != 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_FPGA_EMIF2_BASIC) != 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_I2C_RTC) != 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_I2C_B_TMP116) != 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_I2C_EXTERNAL) == 0U);
+    BoardProfile_Clear();
+    BoardProfile_SetDetectedEthernet(BOARD_PROFILE_ETHERNET_SPIC_W5500);
+    assert(BoardProfile_Select(BOARD_PROFILE_ID_SYSTEM_MASTER) ==
+           BOARD_TEST_RESULT_PASS);
+    assert(BoardProfile_Confirm() == BOARD_TEST_RESULT_PASS);
+    profile = BoardProfile_GetCurrent();
+    hardware = BoardProfile_GetCurrentHardware();
+    assert(profile != 0);
+    assert(hardware != 0);
+    assert(profile->id == BOARD_PROFILE_ID_SYSTEM_MASTER);
+    assert(hardware->boardId == BOARD_PROFILE_ID_SYSTEM_MASTER);
+    assert(hardware->ethernetInterface == BOARD_PROFILE_ETHERNET_SPIC_W5500);
+    assert(hardware->pinMapRevision == 3U);
+    assert(hardware->pinMapValidated == 0U);
+    assert(hardware->pins.led1 == 47U);
+    assert(hardware->pins.led2 == 46U);
+    assert(hardware->pins.canBTransmit == 6U);
+    assert(hardware->pins.canBReceive == 7U);
+    assert(hardware->pins.canBTransmitMux == 6U);
+    assert(hardware->pins.canBReceiveMux == 6U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_SYS_CLOCK) != 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_ADC_BASIC) == 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_GPIO) != 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_ETHERNET) != 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_ETHERNET_SOCKET) == 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_SPIC_INTERNAL) == 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_CAN_HOST) != 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_CAN_EXTERNAL) != 0U);
+    assert((BoardProfile_GetEffectiveCapabilities() &
+            BOARD_PROFILE_CAP_SPIC_W5500) != 0UL);
+
+    BoardProfile_Clear();
+    assert(BoardProfile_Select(BOARD_PROFILE_ID_LOW_ALTITUDE_UNIFIED) ==
+           BOARD_TEST_RESULT_PASS);
+    assert(BoardProfile_Confirm() == BOARD_TEST_RESULT_PASS);
+    assert(BoardProfile_IsConfirmed() != 0U);
+    hardware = BoardProfile_GetCurrentHardware();
+    assert(hardware != 0);
+    assert(hardware->boardId == BOARD_PROFILE_ID_LOW_ALTITUDE_UNIFIED);
+    assert(hardware->ethernetInterface == BOARD_PROFILE_ETHERNET_SPIC_W5500);
+    assert(hardware->pins.sciaDirection == BOARD_PROFILE_PIN_UNUSED);
+    assert(hardware->pins.sciaTransmit == 38U);
+    assert(hardware->pins.sciaReceive == 39U);
+    assert(hardware->pins.scibTransmit == BOARD_PROFILE_PIN_UNUSED);
+    assert(hardware->pins.canATransmit == 37U);
+    assert(hardware->pins.canAReceive == 36U);
+    assert(hardware->pins.canBTransmit == 6U);
+    assert(hardware->pins.canBReceive == 7U);
+    assert(hardware->pins.canATransmitMux == 6U);
+    assert(hardware->pins.canAReceiveMux == 6U);
+    assert(hardware->pins.canBTransmitMux == 6U);
+    assert(hardware->pins.canBReceiveMux == 6U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_GPIO) != 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_ETHERNET) != 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_CAN_EXTERNAL) != 0U);
+
+    BoardProfile_Clear();
+    BoardProfile_SetDetectedEthernet(BOARD_PROFILE_ETHERNET_EMIF_W5300);
+    assert(BoardProfile_Select(BOARD_PROFILE_ID_LOW_ALTITUDE_UNIFIED) ==
+           BOARD_TEST_RESULT_PASS);
+    assert(BoardProfile_Confirm() == BOARD_TEST_RESULT_PASS);
+    hardware = BoardProfile_GetCurrentHardware();
+    assert(hardware != 0);
+    assert(hardware->implementedCapabilities == 0UL);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_CAN_HOST) == 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_CAN_EXTERNAL) == 0U);
+
+    puts("board_profile: runtime selection test passed");
+    return 0;
+}

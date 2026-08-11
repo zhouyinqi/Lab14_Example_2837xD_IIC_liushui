@@ -1,6 +1,7 @@
 # CCS / Eclipse generated build output
 Debug/
 Release/
+outputs/
 
 # C2000 compiler and linker outputs
 *.obj
@@ -27,3 +28,11 @@ Desktop.ini
 # Host test executable output
 Tests/*.exe
 Tests/*.obj
+
+# Qt Creator / CMake generated output
+UpperComputer/build*/
+UpperComputer/.qt/
+UpperComputer/.qtcreator/
+UpperComputer/CMakeCache.txt
+UpperComputer/CMakeFiles/
+UpperComputer/Tools/__pycache__/

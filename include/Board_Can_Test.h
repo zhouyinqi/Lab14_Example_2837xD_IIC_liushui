@@ -82,8 +82,18 @@ typedef struct
     volatile BoardTest_U16 newDataLow;
 } BoardCan_ExternalSnapshot;
 
+typedef struct
+{
+    volatile BoardTest_U16 txGpio;
+    volatile BoardTest_U16 rxGpio;
+    volatile BoardTest_U16 txMux;
+    volatile BoardTest_U16 rxMux;
+    volatile BoardTest_U16 valid;
+} BoardCan_PinSnapshot;
+
 extern volatile BoardCan_LoopbackSnapshot gBoardCanLoopbackSnapshot;
 extern volatile BoardCan_ExternalSnapshot gBoardCanExternalSnapshot;
+extern volatile BoardCan_PinSnapshot gBoardCanPinSnapshot;
 
 BoardTest_Result BoardCan_EvaluateLoopbackStatus(BoardTest_U16 statusMask,
                                                  BoardTest_U32 txData,
@@ -103,6 +113,11 @@ BoardTest_Result BoardCan_EvaluateExternalStatus(BoardTest_U16 statusMask,
 #ifndef BOARD_TEST_HOST
 BoardTest_Result BoardCan_RunLoopbackTest(BoardTest_Record *record);
 BoardTest_Result BoardCan_RunExternalTest(BoardTest_Record *record);
+BoardTest_U16 BoardCan_EnableExternalStandby(void);
+void BoardCan_DisableExternalStandby(void);
+void BoardCan_ServiceExternalStandby(
+    BoardTest_Record *record,
+    BoardTest_StandbyServiceStatus *status);
 void BoardCan_AbortExternalTest(void);
 #endif
 

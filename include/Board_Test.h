@@ -14,6 +14,8 @@ typedef unsigned long BoardTest_U32;
 #define BOARD_TEST_ERROR_UNSUPPORTED 0x0002U
 #define BOARD_TEST_ERROR_SAFETY_LOCK 0x0003U
 #define BOARD_TEST_ERROR_STAGE_MISMATCH 0x0004U
+#define BOARD_TEST_ERROR_PROFILE_PINMAP 0x0005U
+#define BOARD_TEST_ERROR_PROFILE_NOT_CONFIRMED 0x0006U
 #define BOARD_TEST_ERROR_GPIO_READBACK 0x0100U
 #define BOARD_TEST_ERROR_SYS_CLOCK   0x0110U
 #define BOARD_TEST_ERROR_SYS_TIMER   0x0111U
@@ -23,6 +25,7 @@ typedef unsigned long BoardTest_U32;
 #define BOARD_TEST_ERROR_I2C_B_TMP116 0x0120U
 #define BOARD_TEST_ERROR_SCI_LOOPBACK 0x0130U
 #define BOARD_TEST_ERROR_SCI_RS485_EXTERNAL 0x0131U
+#define BOARD_TEST_ERROR_SCIA_HANDHELD_EXTERNAL 0x0132U
 #define BOARD_TEST_ERROR_CAN_LOOPBACK 0x0140U
 #define BOARD_TEST_ERROR_CAN_EXTERNAL 0x0141U
 #define BOARD_TEST_ERROR_SPI_LOOPBACK 0x0150U
@@ -31,6 +34,10 @@ typedef unsigned long BoardTest_U32;
 #define BOARD_TEST_ERROR_PWM_SAFE_CFG 0x0170U
 #define BOARD_TEST_ERROR_EMIF_BASIC   0x0180U
 #define BOARD_TEST_ERROR_EMIF_SRAM    0x0181U
+#define BOARD_TEST_ERROR_FPGA_EMIF2_BASIC 0x0182U
+#define BOARD_TEST_ERROR_DIDO_EXTERNAL 0x0183U
+#define BOARD_TEST_ERROR_HDO_EXTERNAL  0x0184U
+#define BOARD_TEST_ERROR_DI_EXTERNAL   0x0185U
 #define BOARD_TEST_ERROR_ETHERNET     0x0190U
 #define BOARD_TEST_ERROR_ETHERNET_SOCKET 0x0191U
 #define BOARD_TEST_ERROR_ETHERNET_TCP_LINK 0x0192U
@@ -83,6 +90,15 @@ typedef enum
 
 typedef enum
 {
+    BOARD_TEST_STANDBY_DISABLED = 0,
+    BOARD_TEST_STANDBY_WAITING,
+    BOARD_TEST_STANDBY_RECEIVED,
+    BOARD_TEST_STANDBY_REPLIED,
+    BOARD_TEST_STANDBY_FAILED
+} BoardTest_StandbyState;
+
+typedef enum
+{
     BOARD_TEST_RISK_SAFE = 0,
     BOARD_TEST_RISK_LOW_VOLTAGE,
     BOARD_TEST_RISK_HIGH_POWER
@@ -118,6 +134,11 @@ typedef enum
     BOARD_TEST_ID_ETHERNET_TCP_LINK = 0x030EU,
     BOARD_TEST_ID_ETHERNET_TCP_ECHO = 0x030FU,
     BOARD_TEST_ID_ETHERNET_TCP_STABILITY = 0x0310U,
+    BOARD_TEST_ID_SCIA_HANDHELD_EXTERNAL = 0x0311U,
+    BOARD_TEST_ID_FPGA_EMIF2_BASIC = 0x0312U,
+    BOARD_TEST_ID_DIDO_FPGA_DO_EXTERNAL = 0x0313U,
+    BOARD_TEST_ID_HDO_FPGA_EXTERNAL = 0x0314U,
+    BOARD_TEST_ID_DI_FPGA_EXTERNAL = 0x0315U,
     BOARD_TEST_ID_HPD_ESTOP_DI3 = 0x1000U,
     BOARD_TEST_ID_HPD_INDICATOR_DO3 = 0x1001U,
     BOARD_TEST_ID_HPD_DRIVER_1 = 0x1100U,
@@ -134,7 +155,7 @@ typedef enum
     BOARD_TEST_ID_HPD_PHASE_2 = 0x1601U
 } BoardTest_Id;
 
-#define BOARD_TEST_ITEM_COUNT 42U
+#define BOARD_TEST_ITEM_COUNT 47U
 
 typedef struct
 {
@@ -156,6 +177,26 @@ typedef struct
     float expectedMin;
     float expectedMax;
 } BoardTest_Record;
+
+typedef struct
+{
+    volatile BoardTest_U16 state;
+    volatile BoardTest_U16 errorCode;
+    volatile BoardTest_U16 receiveCount;
+    volatile BoardTest_U16 replyCount;
+} BoardTest_StandbyServiceStatus;
+
+typedef struct
+{
+    volatile BoardTest_U16 enabledMask;
+    volatile BoardTest_U16 waitingMask;
+    volatile BoardTest_U16 receivedMask;
+    volatile BoardTest_U16 repliedMask;
+    volatile BoardTest_U16 failedMask;
+    BoardTest_StandbyServiceStatus can;
+    BoardTest_StandbyServiceStatus scib;
+    BoardTest_StandbyServiceStatus ethernet;
+} BoardTest_CommunicationStandbyStatus;
 
 typedef struct
 {
@@ -187,6 +228,7 @@ void BoardTest_Process(BoardTest_Executor executor);
 BoardTest_U16 BoardTest_GetCount(void);
 const BoardTest_Descriptor *BoardTest_GetDescriptor(BoardTest_U16 index);
 const BoardTest_Record *BoardTest_GetRecord(BoardTest_U16 testId);
+BoardTest_Record *BoardTest_GetMutableRecord(BoardTest_U16 testId);
 
 #ifdef __cplusplus
 }
