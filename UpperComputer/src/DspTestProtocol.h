@@ -93,6 +93,7 @@ struct Response {
     float expectedMin = 0.0F;
     float expectedMax = 0.0F;
     quint16 boardProfileId = 0;
+    quint16 boardHardwareRevision = 0;
     quint16 boardPinMapRevision = 0;
     quint32 boardCapabilities = 0;
     EthernetInterface boardEthernetInterface = EthernetInterface::None;

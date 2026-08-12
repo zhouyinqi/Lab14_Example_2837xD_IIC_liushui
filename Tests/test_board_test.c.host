@@ -7,6 +7,7 @@
 #include "Board_Di_Test.h"
 #include "Board_Emif_Test.h"
 #include "Board_Ethernet_Test.h"
+#include "Board_W5500_Test.h"
 #include "Board_Fpga_Test.h"
 #include "Board_Gpio_Test.h"
 #include "Board_Hdo_Test.h"
@@ -59,6 +60,15 @@ static BoardTest_Result TestExecutor(BoardTest_U16 testId,
             (BoardTest_U16)BOARD_SCI_RS485_EXTERNAL_REQUIRED_MASK,
             BOARD_SCI_RS485_EXTERNAL_REQUEST,
             BOARD_SCI_RS485_EXTERNAL_RESPONSE,
+            record);
+    }
+
+    if(testId == BOARD_TEST_ID_RS422_EXTERNAL)
+    {
+        return BoardSci_EvaluateRs422ExternalStatus(
+            (BoardTest_U16)BOARD_SCI_RS422_EXTERNAL_REQUIRED_MASK,
+            BOARD_SCI_RS422_EXTERNAL_REQUEST,
+            BOARD_SCI_RS422_EXTERNAL_RESPONSE,
             record);
     }
 
@@ -353,14 +363,16 @@ static void TestBoardProfiles(void)
     assert(BoardProfile_Select(0x7FFFU) ==
            BOARD_TEST_RESULT_NOT_SUPPORTED);
     assert(BoardProfile_Select(BOARD_PROFILE_ID_LOW_VOLTAGE_INVERTER) ==
+           BOARD_TEST_RESULT_NOT_SUPPORTED);
+    assert(BoardProfile_Select(BOARD_PROFILE_ID_LOW_ALTITUDE_UNIFIED) ==
            BOARD_TEST_RESULT_PASS);
     assert(BoardProfile_Confirm() == BOARD_TEST_RESULT_PASS);
     profile = BoardProfile_GetCurrent();
     hardware = BoardProfile_GetCurrentHardware();
     assert(profile != 0);
     assert(hardware != 0);
-    assert(profile->id == BOARD_PROFILE_ID_LOW_VOLTAGE_INVERTER);
-    assert(hardware->boardId == BOARD_PROFILE_ID_LOW_VOLTAGE_INVERTER);
+    assert(profile->id == BOARD_PROFILE_ID_LOW_ALTITUDE_UNIFIED);
+    assert(hardware->boardId == BOARD_PROFILE_ID_LOW_ALTITUDE_UNIFIED);
     assert(hardware->ethernetInterface == BOARD_PROFILE_ETHERNET_SPIC_W5500);
     assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_ADC_BASIC) == 0U);
     assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_GPIO) != 0U);
@@ -372,6 +384,17 @@ static void TestBoardProfiles(void)
     assert(hardware->pins.canBReceive == 7U);
     assert(hardware->pins.canBTransmitMux == 6U);
     assert(hardware->pins.canBReceiveMux == 6U);
+    assert(hardware->pins.rs422Transmit == 38U);
+    assert(hardware->pins.rs422Receive == 39U);
+    assert(hardware->pins.rs422TransmitMux == 5U);
+    assert(hardware->pins.rs422ReceiveMux == 5U);
+    assert((BoardProfile_GetEffectiveCapabilities() &
+            BOARD_PROFILE_CAP_RS422) != 0UL);
+    assert((BoardProfile_GetImplementedCapabilities() &
+            BOARD_PROFILE_CAP_RS422) != 0UL);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_RS422_EXTERNAL) != 0U);
+    assert(BoardProfile_IsCapabilityValidated(BOARD_PROFILE_CAP_RS422) != 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_SCI_HOST) == 0U);
 
     BoardProfile_Clear();
     assert(gBoardProfileRuntimeStatus.state ==
@@ -386,7 +409,9 @@ static void TestBoardProfiles(void)
     assert(hardware != 0);
     assert(profile->id == BOARD_PROFILE_ID_SYSTEM_MASTER);
     assert(hardware->boardId == BOARD_PROFILE_ID_SYSTEM_MASTER);
-    assert(hardware->pinMapValidated == 1U);
+    assert(hardware->hardwareRevision ==
+           BOARD_PROFILE_HARDWARE_REVISION_SYSTEM_MASTER_V01);
+    assert(BoardProfile_IsCapabilityValidated(BOARD_PROFILE_CAP_SCIB) != 0U);
     assert((BoardProfile_GetEffectiveCapabilities() &
             BOARD_PROFILE_CAP_EMIF_W5300) != 0UL);
     assert(hardware->pins.scibTransmit == BOARD_PIN_SCIB_TX);
@@ -845,6 +870,28 @@ static void TestSciRs485ExternalEvaluation(void)
     assert(record.errorCode == BOARD_TEST_ERROR_SCI_RS485_EXTERNAL);
 }
 
+static void TestSciRs422ExternalEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardSci_EvaluateRs422ExternalStatus(
+               (BoardTest_U16)BOARD_SCI_RS422_EXTERNAL_REQUIRED_MASK,
+               BOARD_SCI_RS422_EXTERNAL_REQUEST,
+               BOARD_SCI_RS422_EXTERNAL_RESPONSE,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x001FA55AUL);
+
+    assert(BoardSci_EvaluateRs422ExternalStatus(
+               (BoardTest_U16)
+               (BOARD_SCI_RS422_EXTERNAL_REQUIRED_MASK &
+                ~BOARD_SCI_RS422_EXTERNAL_RX_MATCH),
+               0x0000U,
+               BOARD_SCI_RS422_EXTERNAL_RESPONSE,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_RS422_EXTERNAL);
+}
+
 static void TestSciaHandheldExternalEvaluation(void)
 {
     BoardTest_Record record;
@@ -935,6 +982,140 @@ static void TestCanExternalEvaluation(void)
     assert(record.errorCode == BOARD_TEST_ERROR_CAN_EXTERNAL);
     assert(record.expectedMin == (float)BOARD_CAN_EXTERNAL_REQUIRED_MASK);
     assert(record.expectedMax == (float)BOARD_CAN_EXTERNAL_DIAGNOSTIC_MASK);
+}
+
+static void TestCanDynamicPinConfiguration(void)
+{
+    const BoardProfile_HardwareDescriptor *hardware;
+    BoardCan_PinConfiguration configuration;
+
+    hardware = BoardProfile_GetHardwareDescriptor(
+        BOARD_PROFILE_ID_SYSTEM_MASTER,
+        BOARD_PROFILE_HARDWARE_REVISION_SYSTEM_MASTER_V01,
+        BOARD_PROFILE_ETHERNET_EMIF_W5300);
+    assert(BoardCan_ResolvePinConfiguration(hardware, &configuration) != 0U);
+    assert(configuration.txGpio == 12U);
+    assert(configuration.rxGpio == 13U);
+    assert(configuration.txMux == 2U);
+    assert(configuration.rxMux == 2U);
+
+    hardware = BoardProfile_GetHardwareDescriptor(
+        BOARD_PROFILE_ID_LOW_VOLTAGE_INVERTER,
+        BOARD_PROFILE_HARDWARE_REVISION_LOW_VOLTAGE_V03,
+        BOARD_PROFILE_ETHERNET_EMIF_W5300);
+    assert(BoardCan_ResolvePinConfiguration(hardware, &configuration) != 0U);
+    assert(configuration.txGpio == 6U);
+    assert(configuration.rxGpio == 7U);
+    assert(configuration.txMux == 6U);
+    assert(configuration.rxMux == 6U);
+
+    hardware = BoardProfile_GetHardwareDescriptor(
+        BOARD_PROFILE_ID_LOW_VOLTAGE_INVERTER,
+        BOARD_PROFILE_HARDWARE_REVISION_LOW_VOLTAGE_V03,
+        BOARD_PROFILE_ETHERNET_SPIC_W5500);
+    assert(BoardCan_ResolvePinConfiguration(hardware, &configuration) == 0U);
+
+    hardware = BoardProfile_GetHardwareDescriptor(
+        BOARD_PROFILE_ID_LOW_ALTITUDE_UNIFIED,
+        BOARD_PROFILE_HARDWARE_REVISION_LOW_ALTITUDE_V01,
+        BOARD_PROFILE_ETHERNET_SPIC_W5500);
+    assert(BoardCan_ResolvePinConfiguration(hardware, &configuration) != 0U);
+    assert(configuration.txGpio == 6U);
+    assert(configuration.rxGpio == 7U);
+    assert(configuration.txMux == 6U);
+    assert(configuration.rxMux == 6U);
+    assert(BoardCan_ResolvePinConfiguration(0, &configuration) == 0U);
+    assert(BoardCan_ResolvePinConfiguration(hardware, 0) == 0U);
+}
+
+static void TestScibDynamicPinConfiguration(void)
+{
+    const BoardProfile_HardwareDescriptor *hardware;
+    BoardSci_ScibPinConfiguration configuration;
+
+    hardware = BoardProfile_GetHardwareDescriptor(
+        BOARD_PROFILE_ID_SYSTEM_MASTER,
+        BOARD_PROFILE_HARDWARE_REVISION_SYSTEM_MASTER_V01,
+        BOARD_PROFILE_ETHERNET_EMIF_W5300);
+    assert(BoardSci_ResolveScibPinConfiguration(hardware, &configuration) !=
+           0U);
+    assert(configuration.directionGpio == 11U);
+    assert(configuration.txGpio == 14U);
+    assert(configuration.rxGpio == 15U);
+    assert(configuration.txMux == 2U);
+    assert(configuration.rxMux == 2U);
+
+    hardware = BoardProfile_GetHardwareDescriptor(
+        BOARD_PROFILE_ID_LOW_VOLTAGE_INVERTER,
+        BOARD_PROFILE_HARDWARE_REVISION_LOW_VOLTAGE_V03,
+        BOARD_PROFILE_ETHERNET_EMIF_W5300);
+    assert(BoardSci_ResolveScibPinConfiguration(hardware, &configuration) !=
+           0U);
+    assert(configuration.directionGpio == 32U);
+    assert(configuration.txGpio == 10U);
+    assert(configuration.rxGpio == 11U);
+    assert(configuration.txMux == 6U);
+    assert(configuration.rxMux == 6U);
+
+    hardware = BoardProfile_GetHardwareDescriptor(
+        BOARD_PROFILE_ID_LOW_VOLTAGE_INVERTER,
+        BOARD_PROFILE_HARDWARE_REVISION_LOW_VOLTAGE_V03,
+        BOARD_PROFILE_ETHERNET_SPIC_W5500);
+    assert(BoardSci_ResolveScibPinConfiguration(hardware, &configuration) ==
+           0U);
+
+    hardware = BoardProfile_GetHardwareDescriptor(
+        BOARD_PROFILE_ID_LOW_ALTITUDE_UNIFIED,
+        BOARD_PROFILE_HARDWARE_REVISION_LOW_ALTITUDE_V01,
+        BOARD_PROFILE_ETHERNET_SPIC_W5500);
+    assert(BoardSci_ResolveScibPinConfiguration(hardware, &configuration) ==
+           0U);
+    assert(BoardSci_ResolveScibPinConfiguration(0, &configuration) == 0U);
+    assert(BoardSci_ResolveScibPinConfiguration(hardware, 0) == 0U);
+}
+
+static void TestRs422DynamicPinConfiguration(void)
+{
+    const BoardProfile_HardwareDescriptor *hardware;
+    BoardSci_Rs422PinConfiguration configuration;
+
+    hardware = BoardProfile_GetHardwareDescriptor(
+        BOARD_PROFILE_ID_LOW_ALTITUDE_UNIFIED,
+        BOARD_PROFILE_HARDWARE_REVISION_LOW_ALTITUDE_V01,
+        BOARD_PROFILE_ETHERNET_SPIC_W5500);
+    assert(BoardSci_ResolveRs422PinConfiguration(hardware, &configuration) !=
+           0U);
+    assert(configuration.txGpio == 38U);
+    assert(configuration.rxGpio == 39U);
+    assert(configuration.txMux == 5U);
+    assert(configuration.rxMux == 5U);
+
+    hardware = BoardProfile_GetHardwareDescriptor(
+        BOARD_PROFILE_ID_LOW_VOLTAGE_INVERTER,
+        BOARD_PROFILE_HARDWARE_REVISION_LOW_VOLTAGE_V03,
+        BOARD_PROFILE_ETHERNET_EMIF_W5300);
+    assert(BoardSci_ResolveRs422PinConfiguration(hardware, &configuration) ==
+           0U);
+    assert(BoardSci_ResolveRs422PinConfiguration(0, &configuration) == 0U);
+    assert(BoardSci_ResolveRs422PinConfiguration(hardware, 0) == 0U);
+}
+
+static void TestW5500BootPinCompatibility(void)
+{
+    const BoardProfile_HardwareDescriptor *hardware;
+
+    hardware = BoardProfile_GetHardwareDescriptor(
+        BOARD_PROFILE_ID_LOW_ALTITUDE_UNIFIED,
+        BOARD_PROFILE_HARDWARE_REVISION_LOW_ALTITUDE_V01,
+        BOARD_PROFILE_ETHERNET_SPIC_W5500);
+    assert(BoardW5500_IsBootPinMapCompatible(hardware) != 0U);
+
+    hardware = BoardProfile_GetHardwareDescriptor(
+        BOARD_PROFILE_ID_LOW_VOLTAGE_INVERTER,
+        BOARD_PROFILE_HARDWARE_REVISION_LOW_VOLTAGE_V03,
+        BOARD_PROFILE_ETHERNET_EMIF_W5300);
+    assert(BoardW5500_IsBootPinMapCompatible(hardware) == 0U);
+    assert(BoardW5500_IsBootPinMapCompatible(0) == 0U);
 }
 
 static void TestAdcBasicEvaluation(void)
@@ -1380,9 +1561,14 @@ int main(void)
     TestTmp116Evaluation();
     TestSciLoopbackEvaluation();
     TestSciRs485ExternalEvaluation();
+    TestSciRs422ExternalEvaluation();
     TestSciaHandheldExternalEvaluation();
     TestCanLoopbackEvaluation();
     TestCanExternalEvaluation();
+    TestCanDynamicPinConfiguration();
+    TestScibDynamicPinConfiguration();
+    TestRs422DynamicPinConfiguration();
+    TestW5500BootPinCompatibility();
     TestAdcBasicEvaluation();
     TestSpiLoopbackEvaluation();
     TestSpiExternalEvaluation();

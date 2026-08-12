@@ -201,6 +201,7 @@ static void BoardHostProtocol_BuildResponse(
         }
         if(hardware != 0)
         {
+            recordResult = hardware->hardwareRevision;
             recordError = hardware->pinMapRevision;
         }
 
@@ -567,6 +568,7 @@ static void BoardTest_TargetServiceEthernetStandby(
 static void BoardTest_TargetDisableCommunicationStandbyServices(void)
 {
     BoardSci_DisableRs485ExternalStandby();
+    BoardSci_DisableRs422ExternalStandby();
     BoardCan_DisableExternalStandby();
     BoardTest_TargetDisableEthernetStandby();
     gBoardTestCommunicationStandbyStatus.can.state =
@@ -585,6 +587,7 @@ static void BoardTest_TargetKeepHostProtocolForManualTest(void)
     ethernetWasEnabled = BoardTest_TargetCommunicationStandbyMask &
                          BOARD_TEST_COMM_STANDBY_ETHERNET;
     BoardSci_DisableRs485ExternalStandby();
+    BoardSci_DisableRs422ExternalStandby();
     BoardCan_DisableExternalStandby();
     gBoardTestCommunicationStandbyStatus.can.state =
         BOARD_TEST_STANDBY_DISABLED;
@@ -626,8 +629,10 @@ static BoardTest_U16 BoardTest_TargetFilterCommunicationStandbyMask(
     {
         mask &= (BoardTest_U16)(~BOARD_TEST_COMM_STANDBY_CAN);
     }
-    if(BoardProfile_IsTestSupported(
-           BOARD_TEST_ID_SCI_RS485_EXTERNAL) == 0U)
+    if((BoardProfile_IsTestSupported(
+            BOARD_TEST_ID_SCI_RS485_EXTERNAL) == 0U) &&
+       (BoardProfile_IsTestSupported(
+            BOARD_TEST_ID_RS422_EXTERNAL) == 0U))
     {
         mask &= (BoardTest_U16)(~BOARD_TEST_COMM_STANDBY_SCIB);
     }
@@ -656,9 +661,29 @@ static void BoardTest_TargetStartCommunicationStandbyServices(void)
 
     if((mask & BOARD_TEST_COMM_STANDBY_SCIB) != 0U)
     {
-        BoardSci_EnableRs485ExternalStandby();
-        gBoardTestCommunicationStandbyStatus.scib.state =
-            BOARD_TEST_STANDBY_WAITING;
+        BoardTest_U16 serialEnabled;
+
+        if(BoardProfile_IsTestSupported(BOARD_TEST_ID_RS422_EXTERNAL) != 0U)
+        {
+            serialEnabled = BoardSci_EnableRs422ExternalStandby();
+        }
+        else
+        {
+            serialEnabled = BoardSci_EnableRs485ExternalStandby();
+        }
+
+        if(serialEnabled != 0U)
+        {
+            gBoardTestCommunicationStandbyStatus.scib.state =
+                BOARD_TEST_STANDBY_WAITING;
+        }
+        else
+        {
+            gBoardTestCommunicationStandbyStatus.scib.state =
+                BOARD_TEST_STANDBY_FAILED;
+            gBoardTestCommunicationStandbyStatus.scib.errorCode =
+                BOARD_TEST_ERROR_PROFILE_PINMAP;
+        }
     }
 
     if((mask & BOARD_TEST_COMM_STANDBY_ETHERNET) != 0U)
@@ -806,6 +831,9 @@ BoardTest_Result BoardTest_TargetExecute(BoardTest_U16 testId,
 
         case BOARD_TEST_ID_SCI_RS485_EXTERNAL:
             return BoardSci_RunRs485ExternalTest(record);
+
+        case BOARD_TEST_ID_RS422_EXTERNAL:
+            return BoardSci_RunRs422ExternalTest(record);
 
         case BOARD_TEST_ID_SCIA_HANDHELD_EXTERNAL:
             return BoardSci_RunSciaHandheldExternalTest(record);
@@ -975,6 +1003,7 @@ void BoardTest_TargetPoll(void)
             BoardEthernet_AbortW5300TcpStabilityTest();
         }
         BoardSci_AbortRs485ExternalTest();
+        BoardSci_AbortRs422ExternalTest();
         BoardSci_AbortSciaHandheldExternalTest();
         BoardCan_AbortExternalTest();
         gBoardTestCommandMailbox.fpgaDoTestArmKey = 0U;
@@ -1003,10 +1032,21 @@ void BoardTest_TargetPoll(void)
            ((BoardTest_TargetCommunicationStandbyMask &
              BOARD_TEST_COMM_STANDBY_SCIB) != 0U))
         {
-            BoardSci_ServiceRs485ExternalStandby(
-                BoardTest_GetMutableRecord(
-                    BOARD_TEST_ID_SCI_RS485_EXTERNAL),
-                &gBoardTestCommunicationStandbyStatus.scib);
+            if(BoardProfile_IsTestSupported(
+                   BOARD_TEST_ID_RS422_EXTERNAL) != 0U)
+            {
+                BoardSci_ServiceRs422ExternalStandby(
+                    BoardTest_GetMutableRecord(
+                        BOARD_TEST_ID_RS422_EXTERNAL),
+                    &gBoardTestCommunicationStandbyStatus.scib);
+            }
+            else
+            {
+                BoardSci_ServiceRs485ExternalStandby(
+                    BoardTest_GetMutableRecord(
+                        BOARD_TEST_ID_SCI_RS485_EXTERNAL),
+                    &gBoardTestCommunicationStandbyStatus.scib);
+            }
         }
 
         if((gBoardTestManager.mode == BOARD_TEST_MODE_IDLE) &&

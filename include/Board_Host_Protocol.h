@@ -42,6 +42,7 @@ extern "C" {
  * payload: rawValue=selected board plus detected hardware capability mask,
  * measuredValue=selected profile ID (zero before selection),
  * expectedMin=detected Ethernet interface, expectedMax=profile state,
+ * recordResult=selected hardware revision,
  * recordError=detected hardware pin map revision.
  */
 

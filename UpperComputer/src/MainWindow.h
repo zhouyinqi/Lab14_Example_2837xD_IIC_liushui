@@ -73,6 +73,9 @@ private:
     void selectCanLibrary();
     bool startCanTest(bool automatic);
     void requestPendingScibRecordRefresh();
+    quint16 activeSerialTestId() const;
+    bool isSerialExternalTest(quint16 testId) const;
+    QString activeSerialName() const;
     void requestEdoManualConfirmation();
     void setEdoManualResult(bool passed);
     void updateResultAppearance(QTableWidgetItem *item,

@@ -125,6 +125,7 @@ bool parseResponse(const QByteArray &frame, Response *response, QString *error)
     }
     if (response->command == Command::GetBoardInfo) {
         response->boardProfileId = static_cast<quint16>(response->measuredValue);
+        response->boardHardwareRevision = readU16(frame, 18);
         response->boardPinMapRevision = response->recordErrorCode;
         response->boardCapabilities = response->rawValue;
         response->boardEthernetInterface =

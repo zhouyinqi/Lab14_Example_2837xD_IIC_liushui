@@ -40,6 +40,7 @@ constexpr quint16 TestDido = 0x0313;
 constexpr quint16 TestHdo = 0x0314;
 constexpr quint16 TestCanExternal = 0x0307;
 constexpr quint16 TestSciRs485External = 0x0309;
+constexpr quint16 TestRs422External = 0x0316;
 constexpr quint16 TestEthernetBasic = 0x0305;
 constexpr quint16 TestEthernetSocket = 0x030D;
 constexpr quint16 TestEthernetTcpLink = 0x030E;
@@ -110,8 +111,8 @@ QString boardCapabilityText(quint32 capabilities)
     if ((capabilities & 0x00000008U) != 0U) items << QStringLiteral("FPGA-EMIF2");
     if ((capabilities & 0x00000010U) != 0U) items << QStringLiteral("ADC");
     if ((capabilities & 0x00000020U) != 0U) items << QStringLiteral("PWM");
-    if ((capabilities & 0x00000040U) != 0U) items << QStringLiteral("DI");
-    if ((capabilities & 0x00000080U) != 0U) items << QStringLiteral("DO");
+    if ((capabilities & 0x00000040U) != 0U) items << QStringLiteral("DSP-DI");
+    if ((capabilities & 0x00000080U) != 0U) items << QStringLiteral("DSP-DO");
     if ((capabilities & 0x00000100U) != 0U) items << QStringLiteral("SCIA");
     if ((capabilities & 0x00000200U) != 0U) items << QStringLiteral("SCIB");
     if ((capabilities & 0x00000400U) != 0U) items << QStringLiteral("CAN-A");
@@ -122,6 +123,10 @@ QString boardCapabilityText(quint32 capabilities)
     if ((capabilities & 0x00008000U) != 0U) items << QStringLiteral("I2C RTC");
     if ((capabilities & 0x00010000U) != 0U) items << QStringLiteral("I2C TMP116");
     if ((capabilities & 0x00020000U) != 0U) items << QStringLiteral("外部I2C");
+    if ((capabilities & 0x00040000U) != 0U) items << QStringLiteral("GPIO");
+    if ((capabilities & 0x00080000U) != 0U) items << QStringLiteral("DSP-HDO");
+    if ((capabilities & 0x00100000U) != 0U) items << QStringLiteral("FPGA-DIDO");
+    if ((capabilities & 0x00200000U) != 0U) items << QStringLiteral("RS422");
 
     return items.isEmpty() ? QStringLiteral("无") : items.join(QStringLiteral("、"));
 }
@@ -380,6 +385,7 @@ MainWindow::MainWindow(QWidget *parent)
     addTest(0x0307, QStringLiteral("CAN_EXTERNAL"), RefreshScope::External);
     addTest(0x0308, QStringLiteral("I2C_EXTERNAL"), RefreshScope::External);
     addTest(0x0309, QStringLiteral("SCI_RS485_EXTERNAL"), RefreshScope::External);
+    addTest(TestRs422External, QStringLiteral("RS422_EXTERNAL"), RefreshScope::External);
     addTest(0x0311, QStringLiteral("SCIA_HANDHELD_EXTERNAL"), RefreshScope::External);
     addTest(TestDido, QStringLiteral("EDO_EXTERNAL"), RefreshScope::External);
     addTest(TestHdo, QStringLiteral("HDO_EXTERNAL"), RefreshScope::External);
@@ -432,7 +438,7 @@ MainWindow::MainWindow(QWidget *parent)
                this,
                QStringLiteral("确认板型"),
                QStringLiteral("请确认当前实际连接的是“%1”。\n"
-                              "DSP已自动识别网络硬件为“%2”，该识别结果不限制板型选择。\n"
+                              "DSP已识别网络硬件为“%2”，当前选项必须匹配已登记的板型和硬件版本。\n"
                               "确认前DSP保持安全锁定，确认后才允许执行测试。")
                    .arg(boardProfileName(profileId),
                         ethernetInterfaceText(m_detectedEthernetInterface)),
@@ -537,7 +543,7 @@ MainWindow::MainWindow(QWidget *parent)
         m_canSingleTestStarted = false;
         if (!m_scibAutomaticTestRequested) {
             appendLog(LogChannel::External,
-                      QStringLiteral("未选择 SCIB COM 口：SCIB 将保持待命，可连接后手动测试。"));
+                      QStringLiteral("未选择 COM 口：串行外设将保持待命，可连接后执行单项测试。"));
         }
         if (!m_canAutomaticTestRequested) {
             appendLog(LogChannel::External,
@@ -611,7 +617,7 @@ MainWindow::MainWindow(QWidget *parent)
         m_scibAutomaticTestRequested = false;
         m_scibAutomaticTestStarted = false;
         m_scibSingleTestRequested =
-            (testId == TestSciRs485External) &&
+            isSerialExternalTest(testId) &&
             (stage == DspTestProtocol::Stage::ExternalConnected) &&
             !m_scibPortBox->currentData().toString().isEmpty();
         m_scibSingleTestStarted = false;
@@ -641,11 +647,11 @@ MainWindow::MainWindow(QWidget *parent)
                 return;
             }
         }
-        if ((testId == TestSciRs485External) &&
+        if (isSerialExternalTest(testId) &&
             (stage == DspTestProtocol::Stage::ExternalConnected) &&
             !m_scibSingleTestRequested) {
             appendLog(LogChannel::Communication,
-                      QStringLiteral("未选择 SCIB COM 口：单项 SCI 将等待外部串口工具发送 0xA5。"));
+                      QStringLiteral("未选择 COM 口：单项串行测试将等待外部工具发送 0xA5。"));
         }
         if ((testId == TestCanExternal) &&
             (stage == DspTestProtocol::Stage::ExternalConnected) &&
@@ -714,10 +720,12 @@ MainWindow::MainWindow(QWidget *parent)
     connect(&m_scibSerialClient, &ScibSerialClient::testFinished, this,
             [this](bool passed, const QString &message) {
                 appendLog(LogChannel::Communication,
-                           passed ? message : QStringLiteral("SCIB 自动测试失败：%1").arg(message));
+                           passed ? message : QStringLiteral("%1 自动测试失败：%2")
+                                                       .arg(activeSerialName(), message));
                 if (!passed && m_scibSingleTestRequested && m_client.isConnected()) {
                     appendLog(LogChannel::Communication,
-                              QStringLiteral("SCIB 单项测试未完成，正在停止 DSP 测试以解除忙状态。"));
+                              QStringLiteral("%1 单项测试未完成，正在停止 DSP 测试以解除忙状态。")
+                                  .arg(activeSerialName()));
                     m_scibSingleTestRequested = false;
                     m_scibSingleTestStarted = false;
                     m_scibRecordRefreshPending = false;
@@ -895,7 +903,7 @@ MainWindow::MainWindow(QWidget *parent)
                     (response.activeTestId == m_singleTestRefreshId)) {
                     m_singleTestObservedRunning = true;
                     if (m_scibSingleTestRequested && !m_scibSingleTestStarted &&
-                        (response.activeTestId == TestSciRs485External)) {
+                        isSerialExternalTest(response.activeTestId)) {
                         m_scibSingleTestStarted = true;
                         startScibTest(true);
                     }
@@ -910,7 +918,7 @@ MainWindow::MainWindow(QWidget *parent)
                     m_singleTestRefreshPending &&
                     m_singleTestStartStatusRequested &&
                     (m_singleTestObservedRunning ||
-                     ((m_singleTestRefreshId != TestSciRs485External) &&
+                     ((!isSerialExternalTest(m_singleTestRefreshId)) &&
                       (m_singleTestRefreshId != TestCanExternal))) &&
                     m_waitingForTestReconnect &&
                     (m_nextRecordIndex < 0)) {
@@ -1030,6 +1038,11 @@ void MainWindow::updateSingleTestChoices(RefreshScope scope)
     m_singleTestBox->blockSignals(true);
     m_singleTestBox->clear();
     for (const quint16 id : *recordIds) {
+        if((scope == RefreshScope::External) &&
+           isSerialExternalTest(id) &&
+           (id != activeSerialTestId())) {
+            continue;
+        }
         if((scope == RefreshScope::External) &&
            ((id == TestEthernetSocket) || isEthernetTcpTest(id))) {
             continue;
@@ -1233,7 +1246,25 @@ void MainWindow::requestPendingScibRecordRefresh()
     }
 
     m_scibRecordRefreshPending = false;
-    m_client.requestRecord(TestSciRs485External);
+    m_client.requestRecord(activeSerialTestId());
+}
+
+quint16 MainWindow::activeSerialTestId() const
+{
+    return (m_boardProfileId == 0x0003U) ?
+        TestRs422External : TestSciRs485External;
+}
+
+bool MainWindow::isSerialExternalTest(quint16 testId) const
+{
+    return (testId == TestSciRs485External) ||
+           (testId == TestRs422External);
+}
+
+QString MainWindow::activeSerialName() const
+{
+    return (m_boardProfileId == 0x0003U) ?
+        QStringLiteral("RS422") : QStringLiteral("SCIB/RS485");
 }
 
 void MainWindow::updateRecord(const DspTestProtocol::Response &response)
@@ -1410,6 +1441,11 @@ void MainWindow::updateBoardInfo(const DspTestProtocol::Response &response)
     m_boardProfileState = response.boardProfileState;
     m_boardProfileId = response.boardProfileId;
     updateBoardProfileChoices(response);
+    if(static_cast<DspTestProtocol::Stage>(
+           m_singleStageBox->currentData().toUInt()) ==
+       DspTestProtocol::Stage::ExternalConnected) {
+        updateSingleTestChoices(RefreshScope::External);
+    }
 
     appendLog(LogChannel::Communication,
               QStringLiteral("引导网络：%1；板型状态：%2。")
@@ -1418,9 +1454,10 @@ void MainWindow::updateBoardInfo(const DspTestProtocol::Response &response)
     if(response.boardProfileId != 0U) {
         appendLog(
             LogChannel::Communication,
-            QStringLiteral("当前板型：%1（ID=%2，引脚表修订=%3）。")
+            QStringLiteral("当前板型：%1（ID=%2，硬件版本=%3，引脚表修订=%4）。")
                 .arg(boardProfileName(response.boardProfileId),
                      hex16(response.boardProfileId),
+                     QString::number(response.boardHardwareRevision),
                      QString::number(response.boardPinMapRevision)));
         appendLog(LogChannel::Communication,
                   QStringLiteral("板型能力：%1。")
@@ -1439,10 +1476,13 @@ void MainWindow::updateBoardProfileChoices(
     m_boardProfileBox->blockSignals(true);
     m_boardProfileBox->clear();
     m_boardProfileBox->addItem(QStringLiteral("请选择实际板型"), 0U);
-    if(response.boardEthernetInterface !=
-       DspTestProtocol::EthernetInterface::None) {
+    if(response.boardEthernetInterface ==
+       DspTestProtocol::EthernetInterface::EmifW5300) {
         m_boardProfileBox->addItem(QStringLiteral("系统主控板"), 0x0001U);
         m_boardProfileBox->addItem(QStringLiteral("低压工业变频器"), 0x0002U);
+    }
+    else if(response.boardEthernetInterface ==
+            DspTestProtocol::EthernetInterface::SpicW5500) {
         m_boardProfileBox->addItem(QStringLiteral("低空经济统型板"), 0x0003U);
     }
 
@@ -1510,30 +1550,33 @@ void MainWindow::refreshScibPorts()
 
     const bool hasPort = !m_scibPortBox->currentData().toString().isEmpty();
     appendLog(LogChannel::Communication,
-              hasPort ? QStringLiteral("已刷新 SCIB 串口：%1。")
+              hasPort ? QStringLiteral("已刷新 COM 口：%1。")
                           .arg(m_scibPortBox->currentData().toString()) :
-                        QStringLiteral("未发现可用的 SCIB 串口。"));
+                        QStringLiteral("未发现可用的 COM 口。"));
 }
 
 bool MainWindow::startScibTest(bool automatic)
 {
+    const QString serialName = activeSerialName();
     const QString portName = m_scibPortBox->currentData().toString();
     if (portName.isEmpty()) {
-        const QString message = QStringLiteral("未选择 SCIB COM 口。请连接 USB-RS485 后重新连接 DSP。");
+        const QString message = QStringLiteral("未选择 %1 COM 口。请连接对应 USB 转换器后重试。")
+                                    .arg(serialName);
         appendLog(LogChannel::Communication, message);
         if (!automatic) {
-            QMessageBox::warning(this, QStringLiteral("SCIB测试"), message);
+            QMessageBox::warning(this, serialName + QStringLiteral("测试"), message);
         }
         return false;
     }
     if (m_scibSerialClient.isActive()) {
-        appendLog(LogChannel::Communication, QStringLiteral("SCIB 测试正在进行。"));
+        appendLog(LogChannel::Communication,
+                  QStringLiteral("%1 测试正在进行。").arg(serialName));
         return false;
     }
 
     appendLog(LogChannel::Communication,
-              automatic ? QStringLiteral("开始 Qt 自动 SCIB 收发测试。") :
-                          QStringLiteral("开始手动触发的 SCIB Qt 收发测试。"));
+              automatic ? QStringLiteral("开始 Qt 自动 %1 收发测试。").arg(serialName) :
+                          QStringLiteral("开始手动触发的 %1 Qt 收发测试。").arg(serialName));
     m_scibSerialClient.startTest(portName);
     return true;
 }
@@ -1673,7 +1716,7 @@ void MainWindow::updateCommunicationStandbyStatus(
     const QString canState = serviceText(
         DspTestProtocol::CommunicationStandbyCan, QStringLiteral("CAN"));
     const QString scibState = serviceText(
-        DspTestProtocol::CommunicationStandbyScib, QStringLiteral("SCIB"));
+        DspTestProtocol::CommunicationStandbyScib, activeSerialName());
     const QString ethernetState = serviceText(
         DspTestProtocol::CommunicationStandbyEthernet,
         QStringLiteral("Ethernet"));
@@ -1721,7 +1764,7 @@ void MainWindow::updateCommunicationStandbyStatus(
         }
         if (scibChanged) {
             m_scibRecordRefreshPending = false;
-            m_client.requestRecord(TestSciRs485External);
+            m_client.requestRecord(activeSerialTestId());
         }
     } else if (scibChanged) {
         m_scibRecordRefreshPending = true;

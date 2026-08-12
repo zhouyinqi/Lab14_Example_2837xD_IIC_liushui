@@ -38,8 +38,47 @@ volatile BoardCan_PinSnapshot gBoardCanPinSnapshot =
     BOARD_PROFILE_PIN_UNUSED,
     BOARD_PROFILE_PIN_UNUSED,
     BOARD_PROFILE_PIN_UNUSED,
+    BOARD_PROFILE_ID_NONE,
+    BOARD_PROFILE_HARDWARE_REVISION_NONE,
+    BOARD_PROFILE_ETHERNET_NONE,
+    BOARD_CAN_EXTERNAL_BIT_RATE_KBPS,
     0U
 };
+
+BoardTest_U16 BoardCan_ResolvePinConfiguration(
+    const BoardProfile_HardwareDescriptor *hardware,
+    BoardCan_PinConfiguration *configuration)
+{
+    if(configuration == 0)
+    {
+        return 0U;
+    }
+
+    configuration->txGpio = BOARD_PROFILE_PIN_UNUSED;
+    configuration->rxGpio = BOARD_PROFILE_PIN_UNUSED;
+    configuration->txMux = BOARD_PROFILE_PIN_UNUSED;
+    configuration->rxMux = BOARD_PROFILE_PIN_UNUSED;
+
+    if((hardware == 0) ||
+       ((hardware->implementedCapabilities & BOARD_PROFILE_CAP_CAN_B) ==
+        0UL) ||
+       (hardware->pins.canBTransmit == BOARD_PROFILE_PIN_UNUSED) ||
+       (hardware->pins.canBReceive == BOARD_PROFILE_PIN_UNUSED) ||
+       (hardware->pins.canBTransmitMux == BOARD_PROFILE_PIN_UNUSED) ||
+       (hardware->pins.canBReceiveMux == BOARD_PROFILE_PIN_UNUSED) ||
+       (hardware->pins.canBTransmit == hardware->pins.canBReceive) ||
+       (hardware->pins.canBTransmitMux > 15U) ||
+       (hardware->pins.canBReceiveMux > 15U))
+    {
+        return 0U;
+    }
+
+    configuration->txGpio = hardware->pins.canBTransmit;
+    configuration->rxGpio = hardware->pins.canBReceive;
+    configuration->txMux = hardware->pins.canBTransmitMux;
+    configuration->rxMux = hardware->pins.canBReceiveMux;
+    return 1U;
+}
 
 BoardTest_Result BoardCan_EvaluateLoopbackStatus(BoardTest_U16 statusMask,
                                                  BoardTest_U32 txData,
@@ -670,30 +709,33 @@ static BoardTest_U16 BoardCan_ExternalErrorFree(BoardTest_U16 errorStatus)
 static BoardTest_U16 BoardCan_ConfigureExternalPins(void)
 {
     const BoardProfile_HardwareDescriptor *hardware;
+    BoardCan_PinConfiguration configuration;
 
     gBoardCanPinSnapshot.valid = 0U;
     gBoardCanPinSnapshot.txGpio = BOARD_PROFILE_PIN_UNUSED;
     gBoardCanPinSnapshot.rxGpio = BOARD_PROFILE_PIN_UNUSED;
     gBoardCanPinSnapshot.txMux = BOARD_PROFILE_PIN_UNUSED;
     gBoardCanPinSnapshot.rxMux = BOARD_PROFILE_PIN_UNUSED;
+    gBoardCanPinSnapshot.boardId = BOARD_PROFILE_ID_NONE;
+    gBoardCanPinSnapshot.hardwareRevision =
+        BOARD_PROFILE_HARDWARE_REVISION_NONE;
+    gBoardCanPinSnapshot.ethernetInterface = BOARD_PROFILE_ETHERNET_NONE;
+    gBoardCanPinSnapshot.bitRateKbps = BOARD_CAN_EXTERNAL_BIT_RATE_KBPS;
 
     hardware = BoardProfile_GetCurrentHardware();
     if((BoardProfile_IsConfirmed() == 0U) ||
-       (hardware == 0) ||
-       ((hardware->implementedCapabilities & BOARD_PROFILE_CAP_CAN_B) ==
-        0UL) ||
-       (hardware->pins.canBTransmit == BOARD_PROFILE_PIN_UNUSED) ||
-       (hardware->pins.canBReceive == BOARD_PROFILE_PIN_UNUSED) ||
-       (hardware->pins.canBTransmitMux == BOARD_PROFILE_PIN_UNUSED) ||
-       (hardware->pins.canBReceiveMux == BOARD_PROFILE_PIN_UNUSED))
+       (BoardCan_ResolvePinConfiguration(hardware, &configuration) == 0U))
     {
         return 0U;
     }
 
-    gBoardCanPinSnapshot.txGpio = hardware->pins.canBTransmit;
-    gBoardCanPinSnapshot.rxGpio = hardware->pins.canBReceive;
-    gBoardCanPinSnapshot.txMux = hardware->pins.canBTransmitMux;
-    gBoardCanPinSnapshot.rxMux = hardware->pins.canBReceiveMux;
+    gBoardCanPinSnapshot.txGpio = configuration.txGpio;
+    gBoardCanPinSnapshot.rxGpio = configuration.rxGpio;
+    gBoardCanPinSnapshot.txMux = configuration.txMux;
+    gBoardCanPinSnapshot.rxMux = configuration.rxMux;
+    gBoardCanPinSnapshot.boardId = hardware->boardId;
+    gBoardCanPinSnapshot.hardwareRevision = hardware->hardwareRevision;
+    gBoardCanPinSnapshot.ethernetInterface = hardware->ethernetInterface;
 
     GPIO_SetupPinMux(gBoardCanPinSnapshot.rxGpio,
                      GPIO_MUX_CPU1,

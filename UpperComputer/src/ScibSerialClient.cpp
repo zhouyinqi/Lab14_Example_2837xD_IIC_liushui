@@ -14,7 +14,7 @@ ScibSerialClient::ScibSerialClient(QObject *parent)
     m_timeout.setSingleShot(true);
     connect(&m_timeout, &QTimer::timeout, this, [this] {
         finish(false,
-               QStringLiteral("SCIB 等待 0x5A 超时。请检查 USB-RS485、COM 口、9600 8N1 和 DSP 待命状态。"));
+               QStringLiteral("串口等待 0x5A 超时。请检查转换器、COM 口、9600 8N1 和 DSP 待命状态。"));
     });
     connect(&m_serial, &QSerialPort::readyRead, this, [this] {
         if (!m_active) {
@@ -23,14 +23,14 @@ ScibSerialClient::ScibSerialClient(QObject *parent)
 
         m_receivedData.append(m_serial.readAll());
         if (m_receivedData.contains(ScibTestResponse)) {
-            finish(true, QStringLiteral("SCIB 自动测试通过：0xA5 -> 0x5A。"));
+            finish(true, QStringLiteral("串口自动测试通过：0xA5 -> 0x5A。"));
         }
     });
     connect(&m_serial, &QSerialPort::errorOccurred, this,
             [this](QSerialPort::SerialPortError error) {
                 if (m_active && error != QSerialPort::NoError) {
                     finish(false,
-                           QStringLiteral("SCIB 串口错误：%1")
+                           QStringLiteral("串口错误：%1")
                                .arg(m_serial.errorString()));
                 }
             });
@@ -44,12 +44,12 @@ bool ScibSerialClient::isActive() const
 void ScibSerialClient::startTest(const QString &portName, qint32 baudRate)
 {
     if (m_active) {
-        emit testProgress(QStringLiteral("SCIB 测试正在进行。"));
+        emit testProgress(QStringLiteral("串口测试正在进行。"));
         return;
     }
 
     if (portName.isEmpty()) {
-        emit testFinished(false, QStringLiteral("未选择可用的 SCIB COM 口。"));
+        emit testFinished(false, QStringLiteral("未选择可用的 COM 口。"));
         return;
     }
 
@@ -78,7 +78,7 @@ void ScibSerialClient::startTest(const QString &portName, qint32 baudRate)
 
     m_serial.flush();
     emit testProgress(
-        QStringLiteral("SCIB 自动测试：%1，9600 8N1，已发送 0xA5，等待 0x5A。")
+        QStringLiteral("串口自动测试：%1，9600 8N1，已发送 0xA5，等待 0x5A。")
             .arg(portName));
     m_timeout.start(ScibResponseTimeoutMs);
 }
@@ -86,7 +86,7 @@ void ScibSerialClient::startTest(const QString &portName, qint32 baudRate)
 void ScibSerialClient::cancel()
 {
     if (m_active) {
-        finish(false, QStringLiteral("SCIB 测试已取消。"));
+        finish(false, QStringLiteral("串口测试已取消。"));
     }
 }
 

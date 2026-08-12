@@ -1,7 +1,7 @@
 #ifndef BOARD_SCI_TEST_H
 #define BOARD_SCI_TEST_H
 
-#include "Board_Test.h"
+#include "Board_Profile.h"
 
 #define BOARD_SCI_LOOPBACK_SCIA_PASS       0x0001UL
 #define BOARD_SCI_LOOPBACK_SCIB_PASS       0x0002UL
@@ -33,6 +33,25 @@
 
 #define BOARD_SCI_RS485_EXTERNAL_REQUEST   0x00A5U
 #define BOARD_SCI_RS485_EXTERNAL_RESPONSE  0x005AU
+
+#define BOARD_SCI_RS422_EXTERNAL_CONFIGURED 0x0001U
+#define BOARD_SCI_RS422_EXTERNAL_RX_READY   0x0002U
+#define BOARD_SCI_RS422_EXTERNAL_RX_MATCH   0x0004U
+#define BOARD_SCI_RS422_EXTERNAL_TX_WRITTEN 0x0008U
+#define BOARD_SCI_RS422_EXTERNAL_TX_DONE    0x0010U
+
+#define BOARD_SCI_RS422_EXTERNAL_REQUIRED_MASK \
+    (BOARD_SCI_RS422_EXTERNAL_CONFIGURED |     \
+     BOARD_SCI_RS422_EXTERNAL_RX_READY |       \
+     BOARD_SCI_RS422_EXTERNAL_RX_MATCH |       \
+     BOARD_SCI_RS422_EXTERNAL_TX_WRITTEN |     \
+     BOARD_SCI_RS422_EXTERNAL_TX_DONE)
+
+#define BOARD_SCI_RS422_EXTERNAL_DIAGNOSTIC_MASK \
+    BOARD_SCI_RS422_EXTERNAL_REQUIRED_MASK
+
+#define BOARD_SCI_RS422_EXTERNAL_REQUEST   0x00A5U
+#define BOARD_SCI_RS422_EXTERNAL_RESPONSE  0x005AU
 
 #define BOARD_SCI_HANDHELD_EXTERNAL_CONFIGURED     0x0001U
 #define BOARD_SCI_HANDHELD_EXTERNAL_RX_ENABLE_LOW  0x0002U
@@ -92,8 +111,60 @@ typedef struct
     volatile BoardTest_U16 rxValue;
     volatile BoardTest_U16 txValue;
     volatile BoardTest_U16 detail;
+} BoardSci_Rs422ExternalSnapshot;
+
+typedef struct
+{
+    volatile BoardTest_U16 statusMask;
+    volatile BoardTest_U16 rxValue;
+    volatile BoardTest_U16 txValue;
+    volatile BoardTest_U16 detail;
     volatile BoardTest_U16 directionLevel;
 } BoardSci_SciaHandheldExternalSnapshot;
+
+typedef struct
+{
+    BoardTest_U16 directionGpio;
+    BoardTest_U16 txGpio;
+    BoardTest_U16 rxGpio;
+    BoardTest_U16 txMux;
+    BoardTest_U16 rxMux;
+} BoardSci_ScibPinConfiguration;
+
+typedef struct
+{
+    volatile BoardTest_U16 directionGpio;
+    volatile BoardTest_U16 txGpio;
+    volatile BoardTest_U16 rxGpio;
+    volatile BoardTest_U16 txMux;
+    volatile BoardTest_U16 rxMux;
+    volatile BoardTest_U16 boardId;
+    volatile BoardTest_U16 hardwareRevision;
+    volatile BoardTest_U16 ethernetInterface;
+    volatile BoardTest_U16 baudRate;
+    volatile BoardTest_U16 valid;
+} BoardSci_ScibPinSnapshot;
+
+typedef struct
+{
+    BoardTest_U16 txGpio;
+    BoardTest_U16 rxGpio;
+    BoardTest_U16 txMux;
+    BoardTest_U16 rxMux;
+} BoardSci_Rs422PinConfiguration;
+
+typedef struct
+{
+    volatile BoardTest_U16 txGpio;
+    volatile BoardTest_U16 rxGpio;
+    volatile BoardTest_U16 txMux;
+    volatile BoardTest_U16 rxMux;
+    volatile BoardTest_U16 boardId;
+    volatile BoardTest_U16 hardwareRevision;
+    volatile BoardTest_U16 ethernetInterface;
+    volatile BoardTest_U16 baudRate;
+    volatile BoardTest_U16 valid;
+} BoardSci_Rs422PinSnapshot;
 
 BoardTest_Result BoardSci_EvaluateLoopbackStatus(BoardTest_U16 statusMask,
                                                   BoardTest_U16 sciaRx,
@@ -106,29 +177,55 @@ BoardTest_Result BoardSci_EvaluateRs485ExternalStatus(
     BoardTest_U16 txValue,
     BoardTest_Record *record);
 
+BoardTest_Result BoardSci_EvaluateRs422ExternalStatus(
+    BoardTest_U16 statusMask,
+    BoardTest_U16 rxValue,
+    BoardTest_U16 txValue,
+    BoardTest_Record *record);
+
 BoardTest_Result BoardSci_EvaluateSciaHandheldExternalStatus(
     BoardTest_U16 statusMask,
     BoardTest_U16 rxValue,
     BoardTest_U16 txValue,
     BoardTest_Record *record);
 
+BoardTest_U16 BoardSci_ResolveScibPinConfiguration(
+    const BoardProfile_HardwareDescriptor *hardware,
+    BoardSci_ScibPinConfiguration *configuration);
+
+BoardTest_U16 BoardSci_ResolveRs422PinConfiguration(
+    const BoardProfile_HardwareDescriptor *hardware,
+    BoardSci_Rs422PinConfiguration *configuration);
+
+extern volatile BoardSci_ScibPinSnapshot gBoardSciScibPinSnapshot;
+extern volatile BoardSci_Rs422PinSnapshot gBoardSciRs422PinSnapshot;
+
 #ifndef BOARD_TEST_HOST
 extern volatile BoardSci_LoopbackSnapshot gBoardSciLoopbackSnapshot;
 extern volatile BoardSci_Rs485ExternalSnapshot
     gBoardSciRs485ExternalSnapshot;
+extern volatile BoardSci_Rs422ExternalSnapshot
+    gBoardSciRs422ExternalSnapshot;
 extern volatile BoardSci_SciaHandheldExternalSnapshot
     gBoardSciSciaHandheldExternalSnapshot;
 
 BoardTest_Result BoardSci_RunLoopbackTest(BoardTest_Record *record);
 BoardTest_Result BoardSci_RunRs485ExternalTest(BoardTest_Record *record);
+BoardTest_Result BoardSci_RunRs422ExternalTest(BoardTest_Record *record);
 BoardTest_Result BoardSci_RunSciaHandheldExternalTest(
     BoardTest_Record *record);
-void BoardSci_EnableRs485ExternalStandby(void);
+BoardTest_U16 BoardSci_EnableRs485ExternalStandby(void);
+BoardTest_U16 BoardSci_EnableRs422ExternalStandby(void);
 void BoardSci_DisableRs485ExternalStandby(void);
+void BoardSci_DisableRs422ExternalStandby(void);
 void BoardSci_ServiceRs485ExternalStandby(
     BoardTest_Record *record,
     BoardTest_StandbyServiceStatus *status);
+void BoardSci_ServiceRs422ExternalStandby(
+    BoardTest_Record *record,
+    BoardTest_StandbyServiceStatus *status);
 void BoardSci_AbortRs485ExternalTest(void);
+void BoardSci_AbortRs422ExternalTest(void);
 void BoardSci_AbortSciaHandheldExternalTest(void);
 #endif
 

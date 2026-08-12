@@ -2,6 +2,7 @@
 #define BOARD_CAN_TEST_H
 
 #include "Board_Test.h"
+#include "Board_Profile.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -54,6 +55,7 @@ extern "C" {
 #define BOARD_CAN_EXTERNAL_RESPONSE_ID     0x001UL
 #define BOARD_CAN_EXTERNAL_REQUEST_PATTERN 0x5AA55AA5UL
 #define BOARD_CAN_EXTERNAL_DATA_BYTES      4U
+#define BOARD_CAN_EXTERNAL_BIT_RATE_KBPS   500U
 
 typedef struct
 {
@@ -84,10 +86,22 @@ typedef struct
 
 typedef struct
 {
+    BoardTest_U16 txGpio;
+    BoardTest_U16 rxGpio;
+    BoardTest_U16 txMux;
+    BoardTest_U16 rxMux;
+} BoardCan_PinConfiguration;
+
+typedef struct
+{
     volatile BoardTest_U16 txGpio;
     volatile BoardTest_U16 rxGpio;
     volatile BoardTest_U16 txMux;
     volatile BoardTest_U16 rxMux;
+    volatile BoardTest_U16 boardId;
+    volatile BoardTest_U16 hardwareRevision;
+    volatile BoardTest_U16 ethernetInterface;
+    volatile BoardTest_U16 bitRateKbps;
     volatile BoardTest_U16 valid;
 } BoardCan_PinSnapshot;
 
@@ -109,6 +123,10 @@ BoardTest_Result BoardCan_EvaluateExternalStatus(BoardTest_U16 statusMask,
                                                  BoardTest_U32 txData,
                                                  BoardTest_U16 errorStatus,
                                                  BoardTest_Record *record);
+
+BoardTest_U16 BoardCan_ResolvePinConfiguration(
+    const BoardProfile_HardwareDescriptor *hardware,
+    BoardCan_PinConfiguration *configuration);
 
 #ifndef BOARD_TEST_HOST
 BoardTest_Result BoardCan_RunLoopbackTest(BoardTest_Record *record);

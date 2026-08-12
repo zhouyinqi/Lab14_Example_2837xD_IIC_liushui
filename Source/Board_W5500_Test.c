@@ -5,12 +5,6 @@
 #include "F28x_Project.h"
 #endif
 
-#define BOARD_W5500_GPIO_RESET              68U
-#define BOARD_W5500_GPIO_SIMO               69U
-#define BOARD_W5500_GPIO_SOMI               70U
-#define BOARD_W5500_GPIO_CLOCK              71U
-#define BOARD_W5500_GPIO_CHIP_SELECT        72U
-#define BOARD_W5500_GPIO_INTERRUPT          73U
 #define BOARD_W5500_SPIC_HIGH_SPEED_MUX     15U
 #define BOARD_W5500_SPIC_BRR                9U
 #define BOARD_W5500_TRANSFER_TIMEOUT        60000UL
@@ -83,6 +77,37 @@ volatile BoardW5500_Snapshot gBoardW5500Snapshot =
     0U
 };
 
+volatile BoardW5500_BootPinSnapshot gBoardW5500BootPinSnapshot =
+{
+    BOARD_W5500_BOOT_PIN_INTERRUPT,
+    BOARD_W5500_BOOT_PIN_RESET,
+    BOARD_W5500_BOOT_PIN_SIMO,
+    BOARD_W5500_BOOT_PIN_SOMI,
+    BOARD_W5500_BOOT_PIN_CLOCK,
+    BOARD_W5500_BOOT_PIN_CHIP_SELECT,
+    BOARD_PROFILE_HARDWARE_REVISION_LOW_ALTITUDE_V01,
+    0U
+};
+
+BoardTest_U16 BoardW5500_IsBootPinMapCompatible(
+    const BoardProfile_HardwareDescriptor *hardware)
+{
+    if((hardware == 0) ||
+       (hardware->ethernetInterface != BOARD_PROFILE_ETHERNET_SPIC_W5500))
+    {
+        return 0U;
+    }
+
+    return ((hardware->pins.ethernetInterrupt ==
+             BOARD_W5500_BOOT_PIN_INTERRUPT) &&
+            (hardware->pins.ethernetReset == BOARD_W5500_BOOT_PIN_RESET) &&
+            (hardware->pins.ethernetSimo == BOARD_W5500_BOOT_PIN_SIMO) &&
+            (hardware->pins.ethernetSomi == BOARD_W5500_BOOT_PIN_SOMI) &&
+            (hardware->pins.ethernetClock == BOARD_W5500_BOOT_PIN_CLOCK) &&
+            (hardware->pins.ethernetChipSelect ==
+             BOARD_W5500_BOOT_PIN_CHIP_SELECT)) ? 1U : 0U;
+}
+
 #ifdef BOARD_TEST_HOST
 
 BoardTest_Result BoardW5500_RunBasicTest(BoardTest_Record *record)
@@ -116,12 +141,12 @@ static BoardTest_U16 BoardW5500_TcpStandbyState =
 
 static void BoardW5500_ChipSelectLow(void)
 {
-    GPIO_WritePin(BOARD_W5500_GPIO_CHIP_SELECT, 0U);
+    GPIO_WritePin(BOARD_W5500_BOOT_PIN_CHIP_SELECT, 0U);
 }
 
 static void BoardW5500_ChipSelectHigh(void)
 {
-    GPIO_WritePin(BOARD_W5500_GPIO_CHIP_SELECT, 1U);
+    GPIO_WritePin(BOARD_W5500_BOOT_PIN_CHIP_SELECT, 1U);
 }
 
 static BoardTest_U16 BoardW5500_TransferByte(BoardTest_U16 value,
@@ -291,20 +316,29 @@ static BoardTest_U16 BoardW5500_WriteU16(BoardTest_U16 address,
 
 static void BoardW5500_InitGpio(void)
 {
-    GPIO_SetupPinMux(BOARD_W5500_GPIO_SIMO, GPIO_MUX_CPU1,
+    gBoardW5500BootPinSnapshot.valid = 0U;
+    GPIO_SetupPinMux(BOARD_W5500_BOOT_PIN_SIMO, GPIO_MUX_CPU1,
                      BOARD_W5500_SPIC_HIGH_SPEED_MUX);
-    GPIO_SetupPinOptions(BOARD_W5500_GPIO_SIMO, GPIO_OUTPUT, GPIO_ASYNC);
-    GPIO_SetupPinMux(BOARD_W5500_GPIO_SOMI, GPIO_MUX_CPU1,
+    GPIO_SetupPinOptions(BOARD_W5500_BOOT_PIN_SIMO, GPIO_OUTPUT, GPIO_ASYNC);
+    GPIO_SetupPinMux(BOARD_W5500_BOOT_PIN_SOMI, GPIO_MUX_CPU1,
                      BOARD_W5500_SPIC_HIGH_SPEED_MUX);
-    GPIO_SetupPinOptions(BOARD_W5500_GPIO_SOMI, GPIO_INPUT,
+    GPIO_SetupPinOptions(BOARD_W5500_BOOT_PIN_SOMI, GPIO_INPUT,
                          GPIO_ASYNC | GPIO_PULLUP);
-    GPIO_SetupPinMux(BOARD_W5500_GPIO_CLOCK, GPIO_MUX_CPU1,
+    GPIO_SetupPinMux(BOARD_W5500_BOOT_PIN_CLOCK, GPIO_MUX_CPU1,
                      BOARD_W5500_SPIC_HIGH_SPEED_MUX);
-    GPIO_SetupPinOptions(BOARD_W5500_GPIO_CLOCK, GPIO_OUTPUT, GPIO_ASYNC);
-    GPIO_SetupPinMux(BOARD_W5500_GPIO_CHIP_SELECT, GPIO_MUX_CPU1, 0U);
-    GPIO_SetupPinOptions(BOARD_W5500_GPIO_CHIP_SELECT, GPIO_OUTPUT,
+    GPIO_SetupPinOptions(BOARD_W5500_BOOT_PIN_CLOCK, GPIO_OUTPUT, GPIO_ASYNC);
+    GPIO_SetupPinMux(BOARD_W5500_BOOT_PIN_CHIP_SELECT, GPIO_MUX_CPU1, 0U);
+    GPIO_SetupPinOptions(BOARD_W5500_BOOT_PIN_CHIP_SELECT, GPIO_OUTPUT,
                          GPIO_PUSHPULL | GPIO_PULLUP);
+    GPIO_WritePin(BOARD_W5500_BOOT_PIN_RESET, 1U);
+    GPIO_SetupPinMux(BOARD_W5500_BOOT_PIN_RESET, GPIO_MUX_CPU1, 0U);
+    GPIO_SetupPinOptions(BOARD_W5500_BOOT_PIN_RESET, GPIO_OUTPUT,
+                         GPIO_PUSHPULL | GPIO_PULLUP);
+    GPIO_SetupPinMux(BOARD_W5500_BOOT_PIN_INTERRUPT, GPIO_MUX_CPU1, 0U);
+    GPIO_SetupPinOptions(BOARD_W5500_BOOT_PIN_INTERRUPT, GPIO_INPUT,
+                         GPIO_ASYNC | GPIO_PULLUP);
     BoardW5500_ChipSelectHigh();
+    gBoardW5500BootPinSnapshot.valid = 1U;
 }
 
 static void BoardW5500_InitSpic(void)
@@ -331,6 +365,14 @@ static BoardTest_U16 BoardW5500_ResetAndProbe(void)
     BoardTest_U16 attempt;
     BoardTest_U16 ok;
     BoardTest_U16 version;
+
+    if((BoardProfile_IsConfirmed() != 0U) &&
+       (BoardW5500_IsBootPinMapCompatible(
+            BoardProfile_GetCurrentHardware()) == 0U))
+    {
+        gBoardW5500Snapshot.lastError = BOARD_TEST_ERROR_PROFILE_PINMAP;
+        return 0U;
+    }
 
     BoardW5500_InitGpio();
     BoardW5500_InitSpic();
