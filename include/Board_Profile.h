@@ -45,6 +45,7 @@ extern "C" {
 #define BOARD_PROFILE_CAP_DSP_HDO             0x00080000UL
 #define BOARD_PROFILE_CAP_FPGA_DIDO           0x00100000UL
 #define BOARD_PROFILE_CAP_RS422               0x00200000UL
+#define BOARD_PROFILE_CAP_SPIB                0x00400000UL
 
 typedef enum
 {

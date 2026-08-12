@@ -99,7 +99,16 @@ static void TestKnownHardwareMatrix(void)
     assert(BoardProfile_IsCapabilityValidated(BOARD_PROFILE_CAP_RS422) != 0U);
     assert(BoardProfile_IsTestSupported(
                BOARD_TEST_ID_SCIA_HANDHELD_EXTERNAL) == 0U);
-    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_SPIB_INTERNAL) == 0U);
+    assert((BoardProfile_GetEffectiveCapabilities() &
+            BOARD_PROFILE_CAP_SPIB) != 0UL);
+    assert((BoardProfile_GetImplementedCapabilities() &
+            BOARD_PROFILE_CAP_SPIB) != 0UL);
+    assert((BoardProfile_GetImplementedCapabilities() &
+            BOARD_PROFILE_CAP_SPIB_FLASH_FRAM) == 0UL);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_SPIB_INTERNAL) != 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_SPIC_INTERNAL) == 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_SPI_EXTERNAL) == 0U);
+    assert(BoardProfile_IsCapabilityValidated(BOARD_PROFILE_CAP_SPIB) != 0U);
     assert((hardware->validatedCapabilities &
             ~hardware->implementedCapabilities) == 0UL);
 }

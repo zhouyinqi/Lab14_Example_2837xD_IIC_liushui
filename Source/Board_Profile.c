@@ -16,6 +16,7 @@ static const BoardProfile_Descriptor BoardProfile_Descriptors[] =
         BOARD_PROFILE_CAP_SCIB |
         BOARD_PROFILE_CAP_CAN_B |
         BOARD_PROFILE_CAP_SPIA |
+        BOARD_PROFILE_CAP_SPIB |
         BOARD_PROFILE_CAP_SPIB_FLASH_FRAM |
         BOARD_PROFILE_CAP_SPIC_EXTERNAL |
         BOARD_PROFILE_CAP_I2C_RTC |
@@ -36,6 +37,7 @@ static const BoardProfile_Descriptor BoardProfile_Descriptors[] =
         BOARD_PROFILE_CAP_SCIB |
         BOARD_PROFILE_CAP_CAN_B |
         BOARD_PROFILE_CAP_SPIA |
+        BOARD_PROFILE_CAP_SPIB |
         BOARD_PROFILE_CAP_SPIB_FLASH_FRAM,
         "Low voltage industrial inverter board"
     },
@@ -51,6 +53,7 @@ static const BoardProfile_Descriptor BoardProfile_Descriptors[] =
         BOARD_PROFILE_CAP_RS422 |
         BOARD_PROFILE_CAP_CAN_A |
         BOARD_PROFILE_CAP_CAN_B |
+        BOARD_PROFILE_CAP_SPIB |
         BOARD_PROFILE_CAP_SPIB_FLASH_FRAM |
         BOARD_PROFILE_CAP_SPIC_EXTERNAL,
         "Low altitude unified control board"
@@ -69,6 +72,7 @@ static const BoardProfile_Descriptor BoardProfile_Descriptors[] =
      BOARD_PROFILE_CAP_SCIB | \
      BOARD_PROFILE_CAP_CAN_B | \
      BOARD_PROFILE_CAP_SPIA | \
+     BOARD_PROFILE_CAP_SPIB | \
      BOARD_PROFILE_CAP_SPIB_FLASH_FRAM | \
      BOARD_PROFILE_CAP_SPIC_EXTERNAL | \
      BOARD_PROFILE_CAP_I2C_RTC | \
@@ -82,13 +86,15 @@ static const BoardProfile_Descriptor BoardProfile_Descriptors[] =
     (BOARD_PROFILE_CAP_SPIC_W5500 | \
      BOARD_PROFILE_CAP_GPIO | \
      BOARD_PROFILE_CAP_CAN_B | \
-     BOARD_PROFILE_CAP_RS422)
+     BOARD_PROFILE_CAP_RS422 | \
+     BOARD_PROFILE_CAP_SPIB)
 
 #define BOARD_PROFILE_LOW_ALTITUDE_W5500_VALIDATED \
     (BOARD_PROFILE_CAP_SPIC_W5500 | \
      BOARD_PROFILE_CAP_GPIO | \
      BOARD_PROFILE_CAP_CAN_B | \
-     BOARD_PROFILE_CAP_RS422)
+     BOARD_PROFILE_CAP_RS422 | \
+     BOARD_PROFILE_CAP_SPIB)
 
 static const BoardProfile_HardwareDescriptor BoardProfile_HardwareDescriptors[] =
 {
@@ -198,7 +204,7 @@ static const BoardProfile_TestCapabilityRule BoardProfile_TestRules[] =
     {BOARD_TEST_ID_CAN_HOST, BOARD_PROFILE_CAP_CAN_B, 0UL, 0UL},
     {BOARD_TEST_ID_SCI_HOST, BOARD_PROFILE_CAP_SCIB, 0UL, 0UL},
     {BOARD_TEST_ID_SPIA_INTERNAL, BOARD_PROFILE_CAP_SPIA, 0UL, 0UL},
-    {BOARD_TEST_ID_SPIB_INTERNAL, BOARD_PROFILE_CAP_SPIB_FLASH_FRAM, 0UL, 0UL},
+    {BOARD_TEST_ID_SPIB_INTERNAL, BOARD_PROFILE_CAP_SPIB, 0UL, 0UL},
     {BOARD_TEST_ID_SPIC_INTERNAL, BOARD_PROFILE_CAP_SPIC_EXTERNAL, 0UL,
         BOARD_PROFILE_CAP_SPIC_W5500},
     {BOARD_TEST_ID_SPI_EXTERNAL, BOARD_PROFILE_CAP_SPIC_EXTERNAL, 0UL,

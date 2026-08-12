@@ -127,6 +127,7 @@ QString boardCapabilityText(quint32 capabilities)
     if ((capabilities & 0x00080000U) != 0U) items << QStringLiteral("DSP-HDO");
     if ((capabilities & 0x00100000U) != 0U) items << QStringLiteral("FPGA-DIDO");
     if ((capabilities & 0x00200000U) != 0U) items << QStringLiteral("RS422");
+    if ((capabilities & 0x00400000U) != 0U) items << QStringLiteral("SPIB");
 
     return items.isEmpty() ? QStringLiteral("无") : items.join(QStringLiteral("、"));
 }

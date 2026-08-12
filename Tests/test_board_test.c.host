@@ -395,6 +395,10 @@ static void TestBoardProfiles(void)
     assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_RS422_EXTERNAL) != 0U);
     assert(BoardProfile_IsCapabilityValidated(BOARD_PROFILE_CAP_RS422) != 0U);
     assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_SCI_HOST) == 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_SPIB_INTERNAL) != 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_SPIC_INTERNAL) == 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_SPI_EXTERNAL) == 0U);
+    assert(BoardProfile_IsCapabilityValidated(BOARD_PROFILE_CAP_SPIB) != 0U);
 
     BoardProfile_Clear();
     assert(gBoardProfileRuntimeStatus.state ==
