@@ -1,4 +1,5 @@
 #include "Board_W5500_Test.h"
+#include "Board_Ethernet_Test.h"
 #include "Board_Host_Protocol.h"
 
 #ifndef BOARD_TEST_HOST
@@ -46,6 +47,11 @@
 #define BOARD_W5500_SOCKET_COMMAND_CLOSE    0x10U
 #define BOARD_W5500_SOCKET_COMMAND_SEND     0x20U
 #define BOARD_W5500_SOCKET_COMMAND_RECV     0x40U
+#define BOARD_W5500_SOCKET_INTERRUPT_CON    0x01U
+#define BOARD_W5500_SOCKET_INTERRUPT_DISCON 0x02U
+#define BOARD_W5500_SOCKET_INTERRUPT_RECV   0x04U
+#define BOARD_W5500_SOCKET_INTERRUPT_TIMEOUT 0x08U
+#define BOARD_W5500_SOCKET_INTERRUPT_SENDOK 0x10U
 #define BOARD_W5500_SOCKET_STATUS_CLOSED    0x00U
 #define BOARD_W5500_SOCKET_STATUS_INIT      0x13U
 #define BOARD_W5500_SOCKET_STATUS_LISTEN    0x14U
@@ -56,6 +62,15 @@
 #define BOARD_W5500_STANDBY_START           1U
 #define BOARD_W5500_STANDBY_WAIT_CONNECT    2U
 #define BOARD_W5500_STANDBY_WAIT_RX         3U
+
+#define BOARD_W5500_TCP_STATE_IDLE          0U
+#define BOARD_W5500_TCP_STATE_WAIT_CONNECT  1U
+#define BOARD_W5500_TCP_STATE_WAIT_RX       2U
+#define BOARD_W5500_TCP_STATE_WAIT_SENDOK   3U
+#define BOARD_W5500_TCP_STABILITY_TARGET    5U
+#define BOARD_W5500_SEND_READY              0U
+#define BOARD_W5500_SEND_WAITING            1U
+#define BOARD_W5500_SEND_FAILED             2U
 
 #define BOARD_W5500_ECHO_REQUEST_0          0x42U
 #define BOARD_W5500_ECHO_REQUEST_1          0x54U
@@ -120,6 +135,30 @@ BoardTest_Result BoardW5500_RunBasicTest(BoardTest_Record *record)
     return BOARD_TEST_RESULT_NOT_SUPPORTED;
 }
 
+BoardTest_Result BoardW5500_RunSocketTest(BoardTest_Record *record)
+{
+    return BoardW5500_RunBasicTest(record);
+}
+
+BoardTest_Result BoardW5500_RunTcpLinkTest(BoardTest_Record *record)
+{
+    return BoardW5500_RunBasicTest(record);
+}
+
+BoardTest_Result BoardW5500_RunTcpEchoTest(BoardTest_Record *record)
+{
+    return BoardW5500_RunBasicTest(record);
+}
+
+BoardTest_Result BoardW5500_RunTcpStabilityTest(BoardTest_Record *record)
+{
+    return BoardW5500_RunBasicTest(record);
+}
+
+void BoardW5500_AbortTcpTests(void)
+{
+}
+
 void BoardW5500_EnableTcpStandby(void)
 {
 }
@@ -138,6 +177,19 @@ void BoardW5500_ServiceTcpStandby(BoardTest_StandbyServiceStatus *status)
 static BoardTest_U16 BoardW5500_TcpStandbyEnabled = 0U;
 static BoardTest_U16 BoardW5500_TcpStandbyState =
     BOARD_W5500_STANDBY_DISABLED;
+static BoardTest_U16 BoardW5500_TcpLinkState = BOARD_W5500_TCP_STATE_IDLE;
+static BoardTest_U16 BoardW5500_TcpEchoState = BOARD_W5500_TCP_STATE_IDLE;
+static BoardTest_U16 BoardW5500_TcpStabilityState =
+    BOARD_W5500_TCP_STATE_IDLE;
+static BoardTest_U16 BoardW5500_TcpStabilityPassCount = 0U;
+static BoardTest_U16 BoardW5500_SendPending = 0U;
+
+static BoardTest_U16 BoardW5500_SendBytes(const BoardTest_U16 *data,
+                                           BoardTest_U16 length);
+static void BoardW5500_SetRunningRecord(BoardTest_Record *record,
+                                         BoardTest_U16 statusMask,
+                                         BoardTest_U16 requiredMask,
+                                         BoardTest_U16 diagnosticMask);
 
 static void BoardW5500_ChipSelectLow(void)
 {
@@ -556,6 +608,109 @@ static BoardTest_U16 BoardW5500_StartSocket0(void)
     return 1U;
 }
 
+static BoardTest_U16 BoardW5500_CloseSocket0(void)
+{
+    if((BoardW5500_WriteByte(BOARD_W5500_SN_CR,
+                              BOARD_W5500_BLOCK_SOCKET0,
+                              BOARD_W5500_SOCKET_COMMAND_CLOSE) == 0U) ||
+       (BoardW5500_WaitCommand() == 0U))
+    {
+        return 0U;
+    }
+    BoardW5500_SendPending = 0U;
+    return BoardW5500_WaitSocketState(BOARD_W5500_SOCKET_STATUS_CLOSED);
+}
+
+static BoardTest_U16 BoardW5500_PrepareTcpTest(void)
+{
+    /*
+     * The command arrived through this W5500, so the common network and PHY
+     * configuration is already valid. Reconfiguring PHY here interrupts link
+     * negotiation between consecutive Qt TCP tests. Only verify SPI access and
+     * replace the protocol connection with a fresh test listener on Socket0.
+     */
+    return ((BoardW5500_ResetAndProbe() != 0U) &&
+            (BoardW5500_StartSocket0() != 0U)) ? 1U : 0U;
+}
+
+static BoardTest_U16 BoardW5500_ReadEchoRequest(BoardTest_U16 *rxSize,
+                                                 BoardTest_U16 *word0,
+                                                 BoardTest_U16 *word1)
+{
+    BoardTest_U16 request[4];
+    BoardTest_U16 readPointer;
+    BoardTest_U16 ok;
+
+    *rxSize = BoardW5500_ReadU16(BOARD_W5500_SN_RX_RSR,
+                                  BOARD_W5500_BLOCK_SOCKET0,
+                                  &ok);
+    if((ok == 0U) || (*rxSize < 4U))
+    {
+        return 0U;
+    }
+    readPointer = BoardW5500_ReadU16(BOARD_W5500_SN_RX_RD,
+                                     BOARD_W5500_BLOCK_SOCKET0,
+                                     &ok);
+    if((ok == 0U) ||
+       (BoardW5500_ReadBytes(readPointer,
+                              BOARD_W5500_BLOCK_SOCKET0_RX,
+                              request,
+                              4U) == 0U) ||
+       (BoardW5500_WriteU16(BOARD_W5500_SN_RX_RD,
+                             BOARD_W5500_BLOCK_SOCKET0,
+                             (BoardTest_U16)(readPointer + 4U)) == 0U) ||
+       (BoardW5500_WriteByte(BOARD_W5500_SN_CR,
+                              BOARD_W5500_BLOCK_SOCKET0,
+                              BOARD_W5500_SOCKET_COMMAND_RECV) == 0U) ||
+       (BoardW5500_WaitCommand() == 0U))
+    {
+        return 0U;
+    }
+    (void)BoardW5500_WriteByte(BOARD_W5500_SN_IR,
+                                BOARD_W5500_BLOCK_SOCKET0,
+                                BOARD_W5500_SOCKET_INTERRUPT_RECV);
+
+    *word0 = (BoardTest_U16)((request[0U] << 8U) | request[1U]);
+    *word1 = (BoardTest_U16)((request[2U] << 8U) | request[3U]);
+    return 1U;
+}
+
+static BoardTest_U16 BoardW5500_SendEchoResponse(BoardTest_U16 *txFree)
+{
+    static const BoardTest_U16 response[4] =
+    {
+        BOARD_W5500_ECHO_RESPONSE_0,
+        BOARD_W5500_ECHO_RESPONSE_1,
+        BOARD_W5500_ECHO_RESPONSE_2,
+        BOARD_W5500_ECHO_RESPONSE_3
+    };
+    BoardTest_U16 ok;
+
+    *txFree = BoardW5500_ReadU16(BOARD_W5500_SN_TX_FSR,
+                                  BOARD_W5500_BLOCK_SOCKET0,
+                                  &ok);
+    if((ok == 0U) || (*txFree < 4U))
+    {
+        return 0U;
+    }
+    (void)BoardW5500_WriteByte(BOARD_W5500_SN_IR,
+                                BOARD_W5500_BLOCK_SOCKET0,
+                                BOARD_W5500_SOCKET_INTERRUPT_SENDOK |
+                                BOARD_W5500_SOCKET_INTERRUPT_TIMEOUT);
+    return BoardW5500_SendBytes(response, 4U);
+}
+
+static BoardTest_U16 BoardW5500_ReadSocketStatus(BoardTest_U16 *ok)
+{
+    BoardTest_U16 socketStatus;
+
+    socketStatus = BoardW5500_ReadByte(BOARD_W5500_SN_SR,
+                                       BOARD_W5500_BLOCK_SOCKET0,
+                                       ok);
+    gBoardW5500Snapshot.socketStatus = socketStatus;
+    return socketStatus;
+}
+
 static void BoardW5500_SetFailure(BoardTest_StandbyServiceStatus *status)
 {
     gBoardW5500Snapshot.lastError = BOARD_TEST_ERROR_ETHERNET;
@@ -580,6 +735,10 @@ static BoardTest_U16 BoardW5500_SendBytes(const BoardTest_U16 *data,
     {
         return 0U;
     }
+    (void)BoardW5500_WriteByte(BOARD_W5500_SN_IR,
+                                BOARD_W5500_BLOCK_SOCKET0,
+                                BOARD_W5500_SOCKET_INTERRUPT_SENDOK |
+                                BOARD_W5500_SOCKET_INTERRUPT_TIMEOUT);
     writePointer = BoardW5500_ReadU16(BOARD_W5500_SN_TX_WR,
                                       BOARD_W5500_BLOCK_SOCKET0,
                                       &ok);
@@ -598,7 +757,44 @@ static BoardTest_U16 BoardW5500_SendBytes(const BoardTest_U16 *data,
     {
         return 0U;
     }
+    BoardW5500_SendPending = 1U;
     return 1U;
+}
+
+static BoardTest_U16 BoardW5500_CheckPendingSend(void)
+{
+    BoardTest_U16 interruptStatus;
+    BoardTest_U16 ok;
+
+    if(BoardW5500_SendPending == 0U)
+    {
+        return BOARD_W5500_SEND_READY;
+    }
+    interruptStatus = BoardW5500_ReadByte(BOARD_W5500_SN_IR,
+                                          BOARD_W5500_BLOCK_SOCKET0,
+                                          &ok);
+    if(ok == 0U)
+    {
+        BoardW5500_SendPending = 0U;
+        return BOARD_W5500_SEND_FAILED;
+    }
+    if((interruptStatus & BOARD_W5500_SOCKET_INTERRUPT_SENDOK) != 0U)
+    {
+        (void)BoardW5500_WriteByte(BOARD_W5500_SN_IR,
+                                    BOARD_W5500_BLOCK_SOCKET0,
+                                    BOARD_W5500_SOCKET_INTERRUPT_SENDOK);
+        BoardW5500_SendPending = 0U;
+        return BOARD_W5500_SEND_READY;
+    }
+    if((interruptStatus & BOARD_W5500_SOCKET_INTERRUPT_TIMEOUT) != 0U)
+    {
+        (void)BoardW5500_WriteByte(BOARD_W5500_SN_IR,
+                                    BOARD_W5500_BLOCK_SOCKET0,
+                                    BOARD_W5500_SOCKET_INTERRUPT_TIMEOUT);
+        BoardW5500_SendPending = 0U;
+        return BOARD_W5500_SEND_FAILED;
+    }
+    return BOARD_W5500_SEND_WAITING;
 }
 
 static void BoardW5500_ServiceRx(BoardTest_StandbyServiceStatus *status)
@@ -611,6 +807,11 @@ static void BoardW5500_ServiceRx(BoardTest_StandbyServiceStatus *status)
     BoardTest_U16 responseLength;
     BoardTest_U16 frameLength;
     BoardTest_U16 echoResponse[4];
+
+    if(BoardW5500_CheckPendingSend() != BOARD_W5500_SEND_READY)
+    {
+        return;
+    }
 
     rxSize = BoardW5500_ReadU16(BOARD_W5500_SN_RX_RSR,
                                  BOARD_W5500_BLOCK_SOCKET0,
@@ -706,6 +907,21 @@ BoardTest_Result BoardW5500_RunBasicTest(BoardTest_Record *record)
     BoardTest_U16 ok;
     BoardTest_U16 statusMask;
 
+    if(BoardW5500_CheckPendingSend() == BOARD_W5500_SEND_WAITING)
+    {
+        BoardW5500_SetRunningRecord(
+            record,
+            0U,
+            BOARD_W5500_STATUS_GPIO_CONFIGURED |
+            BOARD_W5500_STATUS_SPI_CONFIGURED |
+            BOARD_W5500_STATUS_VERSION_VALID,
+            BOARD_W5500_STATUS_GPIO_CONFIGURED |
+            BOARD_W5500_STATUS_SPI_CONFIGURED |
+            BOARD_W5500_STATUS_VERSION_VALID |
+            BOARD_W5500_STATUS_PHY_READABLE);
+        return BOARD_TEST_RESULT_RUNNING;
+    }
+
     statusMask = 0U;
     if(BoardW5500_ResetAndProbe() != 0U)
     {
@@ -746,6 +962,544 @@ BoardTest_Result BoardW5500_RunBasicTest(BoardTest_Record *record)
     return BOARD_TEST_RESULT_FAIL;
 }
 
+static void BoardW5500_SetRunningRecord(BoardTest_Record *record,
+                                         BoardTest_U16 statusMask,
+                                         BoardTest_U16 requiredMask,
+                                         BoardTest_U16 diagnosticMask)
+{
+    record->rawValue = (BoardTest_U32)statusMask << 16U;
+    record->measuredValue = (float)statusMask;
+    record->expectedMin = (float)requiredMask;
+    record->expectedMax = (float)diagnosticMask;
+    record->errorCode = BOARD_TEST_ERROR_NONE;
+}
+
+BoardTest_Result BoardW5500_RunSocketTest(BoardTest_Record *record)
+{
+    BoardTest_U16 statusMask;
+    BoardTest_U16 mode;
+    BoardTest_U16 port;
+    BoardTest_U16 ok;
+
+    if(BoardW5500_CheckPendingSend() == BOARD_W5500_SEND_WAITING)
+    {
+        BoardW5500_SetRunningRecord(record, 0U,
+                                    BOARD_ETHERNET_SOCKET_REQUIRED_MASK,
+                                    BOARD_ETHERNET_SOCKET_DIAGNOSTIC_MASK);
+        return BOARD_TEST_RESULT_RUNNING;
+    }
+
+    statusMask = BOARD_ETHERNET_SOCKET_BACKEND_EMIF;
+    mode = 0U;
+    port = 0U;
+    gBoardEthernetSocketSnapshot.backend = BOARD_ETHERNET_BACKEND_W5500_SPI;
+    gBoardEthernetSocketSnapshot.statusMask = statusMask;
+    gBoardEthernetSocketSnapshot.initStatus = 0U;
+    gBoardEthernetSocketSnapshot.listenStatus = 0U;
+    gBoardEthernetSocketSnapshot.closedStatus = 0U;
+
+    if((BoardW5500_ResetAndProbe() != 0U) &&
+       (BoardW5500_ConfigureCommon() != 0U))
+    {
+        statusMask |= BOARD_ETHERNET_SOCKET_COMMON_READY;
+        if(BoardW5500_StartSocket0() != 0U)
+        {
+            mode = BoardW5500_ReadByte(BOARD_W5500_SN_MR,
+                                        BOARD_W5500_BLOCK_SOCKET0,
+                                        &ok);
+            port = BoardW5500_ReadU16(BOARD_W5500_SN_PORT,
+                                       BOARD_W5500_BLOCK_SOCKET0,
+                                       &ok);
+            if((ok != 0U) &&
+               (mode == BOARD_W5500_SOCKET_MODE_TCP) &&
+               (port == BOARD_W5500_SOCKET_PORT))
+            {
+                statusMask |= BOARD_ETHERNET_SOCKET_CONFIG_READBACK;
+            }
+            statusMask |= BOARD_ETHERNET_SOCKET_OPEN_INIT |
+                          BOARD_ETHERNET_SOCKET_LISTEN;
+            gBoardEthernetSocketSnapshot.initStatus =
+                BOARD_W5500_SOCKET_STATUS_INIT;
+            gBoardEthernetSocketSnapshot.listenStatus =
+                BOARD_W5500_SOCKET_STATUS_LISTEN;
+        }
+    }
+    if(BoardW5500_CloseSocket0() != 0U)
+    {
+        statusMask |= BOARD_ETHERNET_SOCKET_CLOSE_CLOSED;
+        gBoardEthernetSocketSnapshot.closedStatus =
+            BOARD_W5500_SOCKET_STATUS_CLOSED;
+    }
+    gBoardEthernetSocketSnapshot.statusMask = statusMask;
+    gBoardEthernetSocketSnapshot.socketModeReg = mode;
+    gBoardEthernetSocketSnapshot.socketPortReg = port;
+    return BoardEthernet_EvaluateW5300SocketStatus(
+        statusMask,
+        mode,
+        port,
+        (BoardTest_U16)(gBoardEthernetSocketSnapshot.initStatus << 8U),
+        (BoardTest_U16)(gBoardEthernetSocketSnapshot.listenStatus << 8U),
+        (BoardTest_U16)(gBoardEthernetSocketSnapshot.closedStatus << 8U),
+        record);
+}
+
+BoardTest_Result BoardW5500_RunTcpLinkTest(BoardTest_Record *record)
+{
+    BoardTest_U16 statusMask;
+    BoardTest_U16 socketStatus;
+    BoardTest_U16 ok;
+
+    statusMask = gBoardEthernetTcpLinkSnapshot.statusMask;
+    if(BoardW5500_TcpLinkState == BOARD_W5500_TCP_STATE_IDLE)
+    {
+        if(BoardW5500_CheckPendingSend() == BOARD_W5500_SEND_WAITING)
+        {
+            BoardW5500_SetRunningRecord(
+                record, 0U,
+                BOARD_ETHERNET_TCP_LINK_REQUIRED_MASK,
+                BOARD_ETHERNET_TCP_LINK_DIAGNOSTIC_MASK);
+            return BOARD_TEST_RESULT_RUNNING;
+        }
+        statusMask = BOARD_ETHERNET_TCP_LINK_BACKEND_EMIF;
+        gBoardEthernetTcpLinkSnapshot.backend =
+            BOARD_ETHERNET_BACKEND_W5500_SPI;
+        gBoardEthernetTcpLinkSnapshot.remoteIpHigh = 0U;
+        gBoardEthernetTcpLinkSnapshot.remoteIpLow = 0U;
+        gBoardEthernetTcpLinkSnapshot.remotePort = 0U;
+        gBoardEthernetTcpLinkSnapshot.connectedStatus = 0U;
+        gBoardEthernetTcpLinkSnapshot.closedStatus = 0U;
+        if(BoardW5500_PrepareTcpTest() != 0U)
+        {
+            statusMask |= BOARD_ETHERNET_TCP_LINK_COMMON_READY |
+                          BOARD_ETHERNET_TCP_LINK_LISTEN;
+            gBoardEthernetTcpLinkSnapshot.listenStatus =
+                BOARD_W5500_SOCKET_STATUS_LISTEN;
+            BoardW5500_TcpLinkState = BOARD_W5500_TCP_STATE_WAIT_CONNECT;
+        }
+        gBoardEthernetTcpLinkSnapshot.statusMask = statusMask;
+        if(BoardW5500_TcpLinkState == BOARD_W5500_TCP_STATE_IDLE)
+        {
+            return BoardEthernet_EvaluateW5300TcpLinkStatus(
+                statusMask, gBoardEthernetTcpLinkSnapshot.listenStatus,
+                0U, 0U, 0U, record);
+        }
+        BoardW5500_SetRunningRecord(record, statusMask,
+                                    BOARD_ETHERNET_TCP_LINK_REQUIRED_MASK,
+                                    BOARD_ETHERNET_TCP_LINK_DIAGNOSTIC_MASK);
+        return BOARD_TEST_RESULT_RUNNING;
+    }
+
+    socketStatus = BoardW5500_ReadSocketStatus(&ok);
+    gBoardEthernetTcpLinkSnapshot.connectedStatus = socketStatus;
+    if((ok != 0U) &&
+       (socketStatus == BOARD_W5500_SOCKET_STATUS_ESTABLISHED))
+    {
+        statusMask |= BOARD_ETHERNET_TCP_LINK_ESTABLISHED;
+        if(BoardW5500_CloseSocket0() != 0U)
+        {
+            statusMask |= BOARD_ETHERNET_TCP_LINK_CLOSE_CLOSED;
+            gBoardEthernetTcpLinkSnapshot.closedStatus =
+                BOARD_W5500_SOCKET_STATUS_CLOSED;
+        }
+        BoardW5500_TcpLinkState = BOARD_W5500_TCP_STATE_IDLE;
+        gBoardEthernetTcpLinkSnapshot.statusMask = statusMask;
+        return BoardEthernet_EvaluateW5300TcpLinkStatus(
+            statusMask, gBoardEthernetTcpLinkSnapshot.listenStatus,
+            (BoardTest_U16)(socketStatus << 8U),
+            gBoardEthernetTcpLinkSnapshot.closedStatus,
+            0U, record);
+    }
+    if((ok == 0U) ||
+       (socketStatus == BOARD_W5500_SOCKET_STATUS_CLOSED) ||
+       (socketStatus == BOARD_W5500_SOCKET_STATUS_CLOSE_WAIT))
+    {
+        BoardW5500_TcpLinkState = BOARD_W5500_TCP_STATE_IDLE;
+        gBoardEthernetTcpLinkSnapshot.statusMask = statusMask;
+        return BoardEthernet_EvaluateW5300TcpLinkStatus(
+            statusMask, gBoardEthernetTcpLinkSnapshot.listenStatus,
+            (BoardTest_U16)(socketStatus << 8U), 0U, 0U, record);
+    }
+    BoardW5500_SetRunningRecord(record, statusMask,
+                                BOARD_ETHERNET_TCP_LINK_REQUIRED_MASK,
+                                BOARD_ETHERNET_TCP_LINK_DIAGNOSTIC_MASK);
+    return BOARD_TEST_RESULT_RUNNING;
+}
+
+BoardTest_Result BoardW5500_RunTcpStabilityTest(BoardTest_Record *record)
+{
+    BoardTest_U16 statusMask;
+    BoardTest_U16 socketStatus;
+    BoardTest_U16 interruptStatus;
+    BoardTest_U16 rxSize;
+    BoardTest_U16 word0;
+    BoardTest_U16 word1;
+    BoardTest_U16 txFree;
+    BoardTest_U16 ok;
+
+    statusMask = gBoardEthernetTcpStabilitySnapshot.statusMask;
+    if(BoardW5500_TcpStabilityState == BOARD_W5500_TCP_STATE_IDLE)
+    {
+        if(BoardW5500_CheckPendingSend() == BOARD_W5500_SEND_WAITING)
+        {
+            BoardW5500_SetRunningRecord(
+                record, 0U,
+                BOARD_ETHERNET_TCP_STABILITY_REQUIRED_MASK,
+                BOARD_ETHERNET_TCP_STABILITY_DIAGNOSTIC_MASK);
+            return BOARD_TEST_RESULT_RUNNING;
+        }
+        statusMask = BOARD_ETHERNET_TCP_STABILITY_BACKEND_EMIF;
+        BoardW5500_TcpStabilityPassCount = 0U;
+        gBoardEthernetTcpStabilitySnapshot.backend =
+            BOARD_ETHERNET_BACKEND_W5500_SPI;
+        gBoardEthernetTcpStabilitySnapshot.listenStatus = 0U;
+        gBoardEthernetTcpStabilitySnapshot.connectedStatus = 0U;
+        gBoardEthernetTcpStabilitySnapshot.rxSize = 0U;
+        gBoardEthernetTcpStabilitySnapshot.rxFrameLength = 0U;
+        gBoardEthernetTcpStabilitySnapshot.rxWord0 = 0U;
+        gBoardEthernetTcpStabilitySnapshot.rxWord1 = 0U;
+        gBoardEthernetTcpStabilitySnapshot.txFreeLow = 0U;
+        gBoardEthernetTcpStabilitySnapshot.sendStatus = 0U;
+        gBoardEthernetTcpStabilitySnapshot.closedStatus = 0U;
+        gBoardEthernetTcpStabilitySnapshot.passCount = 0U;
+        gBoardEthernetTcpStabilitySnapshot.targetCount =
+            BOARD_W5500_TCP_STABILITY_TARGET;
+        if(BoardW5500_PrepareTcpTest() != 0U)
+        {
+            statusMask |= BOARD_ETHERNET_TCP_STABILITY_COMMON_READY |
+                          BOARD_ETHERNET_TCP_STABILITY_LISTEN;
+            gBoardEthernetTcpStabilitySnapshot.listenStatus =
+                BOARD_W5500_SOCKET_STATUS_LISTEN;
+            BoardW5500_TcpStabilityState =
+                BOARD_W5500_TCP_STATE_WAIT_CONNECT;
+        }
+        gBoardEthernetTcpStabilitySnapshot.statusMask = statusMask;
+        if(BoardW5500_TcpStabilityState == BOARD_W5500_TCP_STATE_IDLE)
+        {
+            return BoardEthernet_EvaluateW5300TcpStabilityStatus(
+                statusMask, 0U, 0U, BOARD_W5500_TCP_STABILITY_TARGET,
+                record);
+        }
+        BoardW5500_SetRunningRecord(
+            record, statusMask,
+            BOARD_ETHERNET_TCP_STABILITY_REQUIRED_MASK,
+            BOARD_ETHERNET_TCP_STABILITY_DIAGNOSTIC_MASK);
+        return BOARD_TEST_RESULT_RUNNING;
+    }
+
+    socketStatus = BoardW5500_ReadSocketStatus(&ok);
+    gBoardEthernetTcpStabilitySnapshot.connectedStatus = socketStatus;
+    if(BoardW5500_TcpStabilityState == BOARD_W5500_TCP_STATE_WAIT_CONNECT)
+    {
+        if((ok != 0U) &&
+           (socketStatus == BOARD_W5500_SOCKET_STATUS_ESTABLISHED))
+        {
+            statusMask |= BOARD_ETHERNET_TCP_STABILITY_ESTABLISHED;
+            BoardW5500_TcpStabilityState = BOARD_W5500_TCP_STATE_WAIT_RX;
+        }
+        else if((ok == 0U) ||
+                (socketStatus == BOARD_W5500_SOCKET_STATUS_CLOSED) ||
+                (socketStatus == BOARD_W5500_SOCKET_STATUS_CLOSE_WAIT))
+        {
+            BoardW5500_TcpStabilityState = BOARD_W5500_TCP_STATE_IDLE;
+            gBoardEthernetTcpStabilitySnapshot.statusMask = statusMask;
+            return BoardEthernet_EvaluateW5300TcpStabilityStatus(
+                statusMask, (BoardTest_U16)(socketStatus << 8U),
+                BoardW5500_TcpStabilityPassCount,
+                BOARD_W5500_TCP_STABILITY_TARGET, record);
+        }
+    }
+    else if(BoardW5500_TcpStabilityState == BOARD_W5500_TCP_STATE_WAIT_RX)
+    {
+        if((ok == 0U) ||
+           (socketStatus != BOARD_W5500_SOCKET_STATUS_ESTABLISHED))
+        {
+            BoardW5500_TcpStabilityState = BOARD_W5500_TCP_STATE_IDLE;
+            gBoardEthernetTcpStabilitySnapshot.statusMask = statusMask;
+            return BoardEthernet_EvaluateW5300TcpStabilityStatus(
+                statusMask, (BoardTest_U16)(socketStatus << 8U),
+                BoardW5500_TcpStabilityPassCount,
+                BOARD_W5500_TCP_STABILITY_TARGET, record);
+        }
+        rxSize = BoardW5500_ReadU16(BOARD_W5500_SN_RX_RSR,
+                                     BOARD_W5500_BLOCK_SOCKET0,
+                                     &ok);
+        if((ok != 0U) && (rxSize >= 4U))
+        {
+            if(BoardW5500_ReadEchoRequest(&rxSize, &word0, &word1) == 0U)
+            {
+                BoardW5500_TcpStabilityState = BOARD_W5500_TCP_STATE_IDLE;
+                return BoardEthernet_EvaluateW5300TcpStabilityStatus(
+                    statusMask, (BoardTest_U16)(socketStatus << 8U),
+                    BoardW5500_TcpStabilityPassCount,
+                    BOARD_W5500_TCP_STABILITY_TARGET, record);
+            }
+            statusMask |= BOARD_ETHERNET_TCP_STABILITY_RX_AVAILABLE;
+            gBoardEthernetTcpStabilitySnapshot.rxSize = rxSize;
+            gBoardEthernetTcpStabilitySnapshot.rxFrameLength = 4U;
+            gBoardEthernetTcpStabilitySnapshot.rxWord0 = word0;
+            gBoardEthernetTcpStabilitySnapshot.rxWord1 = word1;
+            if((word0 == 0x4254U) && (word1 == 0x5354U))
+            {
+                statusMask |= BOARD_ETHERNET_TCP_STABILITY_RX_MATCH;
+            }
+            if(((statusMask & BOARD_ETHERNET_TCP_STABILITY_RX_MATCH) == 0U) ||
+               (BoardW5500_SendEchoResponse(&txFree) == 0U))
+            {
+                (void)BoardW5500_CloseSocket0();
+                BoardW5500_TcpStabilityState = BOARD_W5500_TCP_STATE_IDLE;
+                gBoardEthernetTcpStabilitySnapshot.statusMask = statusMask;
+                return BoardEthernet_EvaluateW5300TcpStabilityStatus(
+                    statusMask, (BoardTest_U16)(socketStatus << 8U),
+                    BoardW5500_TcpStabilityPassCount,
+                    BOARD_W5500_TCP_STABILITY_TARGET, record);
+            }
+            statusMask |= BOARD_ETHERNET_TCP_STABILITY_TX_FREE;
+            gBoardEthernetTcpStabilitySnapshot.txFreeLow = txFree;
+            BoardW5500_TcpStabilityState =
+                BOARD_W5500_TCP_STATE_WAIT_SENDOK;
+        }
+    }
+    else
+    {
+        interruptStatus = BoardW5500_ReadByte(BOARD_W5500_SN_IR,
+                                              BOARD_W5500_BLOCK_SOCKET0,
+                                              &ok);
+        gBoardEthernetTcpStabilitySnapshot.sendStatus = interruptStatus;
+        if((ok != 0U) &&
+           ((interruptStatus & BOARD_W5500_SOCKET_INTERRUPT_SENDOK) != 0U))
+        {
+            statusMask |= BOARD_ETHERNET_TCP_STABILITY_TX_SENT;
+            (void)BoardW5500_WriteByte(BOARD_W5500_SN_IR,
+                                        BOARD_W5500_BLOCK_SOCKET0,
+                                        BOARD_W5500_SOCKET_INTERRUPT_SENDOK);
+            BoardW5500_SendPending = 0U;
+            BoardW5500_TcpStabilityPassCount++;
+            gBoardEthernetTcpStabilitySnapshot.passCount =
+                BoardW5500_TcpStabilityPassCount;
+            if(BoardW5500_TcpStabilityPassCount >=
+               BOARD_W5500_TCP_STABILITY_TARGET)
+            {
+                statusMask |=
+                    BOARD_ETHERNET_TCP_STABILITY_TARGET_REACHED;
+                if(BoardW5500_CloseSocket0() != 0U)
+                {
+                    statusMask |=
+                        BOARD_ETHERNET_TCP_STABILITY_CLOSE_CLOSED;
+                    gBoardEthernetTcpStabilitySnapshot.closedStatus =
+                        BOARD_W5500_SOCKET_STATUS_CLOSED;
+                }
+                BoardW5500_TcpStabilityState = BOARD_W5500_TCP_STATE_IDLE;
+                gBoardEthernetTcpStabilitySnapshot.statusMask = statusMask;
+                return BoardEthernet_EvaluateW5300TcpStabilityStatus(
+                    statusMask, (BoardTest_U16)(socketStatus << 8U),
+                    BoardW5500_TcpStabilityPassCount,
+                    BOARD_W5500_TCP_STABILITY_TARGET, record);
+            }
+            BoardW5500_TcpStabilityState = BOARD_W5500_TCP_STATE_WAIT_RX;
+        }
+        else if((ok == 0U) ||
+                ((interruptStatus &
+                  BOARD_W5500_SOCKET_INTERRUPT_TIMEOUT) != 0U))
+        {
+            BoardW5500_SendPending = 0U;
+            BoardW5500_TcpStabilityState = BOARD_W5500_TCP_STATE_IDLE;
+            gBoardEthernetTcpStabilitySnapshot.statusMask = statusMask;
+            return BoardEthernet_EvaluateW5300TcpStabilityStatus(
+                statusMask, (BoardTest_U16)(socketStatus << 8U),
+                BoardW5500_TcpStabilityPassCount,
+                BOARD_W5500_TCP_STABILITY_TARGET, record);
+        }
+    }
+
+    gBoardEthernetTcpStabilitySnapshot.statusMask = statusMask;
+    BoardW5500_SetRunningRecord(
+        record, statusMask,
+        BOARD_ETHERNET_TCP_STABILITY_REQUIRED_MASK,
+        BOARD_ETHERNET_TCP_STABILITY_DIAGNOSTIC_MASK);
+    return BOARD_TEST_RESULT_RUNNING;
+}
+
+void BoardW5500_AbortTcpTests(void)
+{
+    if((BoardW5500_TcpLinkState != BOARD_W5500_TCP_STATE_IDLE) ||
+       (BoardW5500_TcpEchoState != BOARD_W5500_TCP_STATE_IDLE) ||
+       (BoardW5500_TcpStabilityState != BOARD_W5500_TCP_STATE_IDLE))
+    {
+        (void)BoardW5500_CloseSocket0();
+    }
+    BoardW5500_TcpLinkState = BOARD_W5500_TCP_STATE_IDLE;
+    BoardW5500_TcpEchoState = BOARD_W5500_TCP_STATE_IDLE;
+    BoardW5500_TcpStabilityState = BOARD_W5500_TCP_STATE_IDLE;
+    BoardW5500_TcpStabilityPassCount = 0U;
+}
+
+BoardTest_Result BoardW5500_RunTcpEchoTest(BoardTest_Record *record)
+{
+    BoardTest_U16 statusMask;
+    BoardTest_U16 socketStatus;
+    BoardTest_U16 interruptStatus;
+    BoardTest_U16 rxSize;
+    BoardTest_U16 word0;
+    BoardTest_U16 word1;
+    BoardTest_U16 txFree;
+    BoardTest_U16 ok;
+
+    statusMask = gBoardEthernetTcpEchoSnapshot.statusMask;
+    if(BoardW5500_TcpEchoState == BOARD_W5500_TCP_STATE_IDLE)
+    {
+        if(BoardW5500_CheckPendingSend() == BOARD_W5500_SEND_WAITING)
+        {
+            BoardW5500_SetRunningRecord(
+                record, 0U,
+                BOARD_ETHERNET_TCP_ECHO_REQUIRED_MASK,
+                BOARD_ETHERNET_TCP_ECHO_DIAGNOSTIC_MASK);
+            return BOARD_TEST_RESULT_RUNNING;
+        }
+        statusMask = BOARD_ETHERNET_TCP_ECHO_BACKEND_EMIF;
+        gBoardEthernetTcpEchoSnapshot.backend =
+            BOARD_ETHERNET_BACKEND_W5500_SPI;
+        gBoardEthernetTcpEchoSnapshot.listenStatus = 0U;
+        gBoardEthernetTcpEchoSnapshot.connectedStatus = 0U;
+        gBoardEthernetTcpEchoSnapshot.rxSize = 0U;
+        gBoardEthernetTcpEchoSnapshot.rxFrameLength = 0U;
+        gBoardEthernetTcpEchoSnapshot.rxWord0 = 0U;
+        gBoardEthernetTcpEchoSnapshot.rxWord1 = 0U;
+        gBoardEthernetTcpEchoSnapshot.txFreeLow = 0U;
+        gBoardEthernetTcpEchoSnapshot.sendStatus = 0U;
+        gBoardEthernetTcpEchoSnapshot.closedStatus = 0U;
+        if(BoardW5500_PrepareTcpTest() != 0U)
+        {
+            statusMask |= BOARD_ETHERNET_TCP_ECHO_COMMON_READY |
+                          BOARD_ETHERNET_TCP_ECHO_LISTEN;
+            gBoardEthernetTcpEchoSnapshot.listenStatus =
+                BOARD_W5500_SOCKET_STATUS_LISTEN;
+            BoardW5500_TcpEchoState = BOARD_W5500_TCP_STATE_WAIT_CONNECT;
+        }
+        gBoardEthernetTcpEchoSnapshot.statusMask = statusMask;
+        if(BoardW5500_TcpEchoState == BOARD_W5500_TCP_STATE_IDLE)
+        {
+            return BoardEthernet_EvaluateW5300TcpEchoStatus(
+                statusMask, 0U, 0U, 0U, record);
+        }
+        BoardW5500_SetRunningRecord(record, statusMask,
+                                    BOARD_ETHERNET_TCP_ECHO_REQUIRED_MASK,
+                                    BOARD_ETHERNET_TCP_ECHO_DIAGNOSTIC_MASK);
+        return BOARD_TEST_RESULT_RUNNING;
+    }
+
+    socketStatus = BoardW5500_ReadSocketStatus(&ok);
+    gBoardEthernetTcpEchoSnapshot.connectedStatus = socketStatus;
+    if(BoardW5500_TcpEchoState == BOARD_W5500_TCP_STATE_WAIT_CONNECT)
+    {
+        if((ok != 0U) &&
+           (socketStatus == BOARD_W5500_SOCKET_STATUS_ESTABLISHED))
+        {
+            statusMask |= BOARD_ETHERNET_TCP_ECHO_ESTABLISHED;
+            BoardW5500_TcpEchoState = BOARD_W5500_TCP_STATE_WAIT_RX;
+        }
+        else if((ok == 0U) ||
+                (socketStatus == BOARD_W5500_SOCKET_STATUS_CLOSED) ||
+                (socketStatus == BOARD_W5500_SOCKET_STATUS_CLOSE_WAIT))
+        {
+            BoardW5500_TcpEchoState = BOARD_W5500_TCP_STATE_IDLE;
+            gBoardEthernetTcpEchoSnapshot.statusMask = statusMask;
+            return BoardEthernet_EvaluateW5300TcpEchoStatus(
+                statusMask, (BoardTest_U16)(socketStatus << 8U),
+                0U, 0U, record);
+        }
+    }
+    else if(BoardW5500_TcpEchoState == BOARD_W5500_TCP_STATE_WAIT_RX)
+    {
+        if((ok == 0U) ||
+           (socketStatus != BOARD_W5500_SOCKET_STATUS_ESTABLISHED))
+        {
+            BoardW5500_TcpEchoState = BOARD_W5500_TCP_STATE_IDLE;
+            gBoardEthernetTcpEchoSnapshot.statusMask = statusMask;
+            return BoardEthernet_EvaluateW5300TcpEchoStatus(
+                statusMask, (BoardTest_U16)(socketStatus << 8U),
+                0U, 0U, record);
+        }
+        rxSize = BoardW5500_ReadU16(BOARD_W5500_SN_RX_RSR,
+                                     BOARD_W5500_BLOCK_SOCKET0,
+                                     &ok);
+        if((ok != 0U) && (rxSize >= 4U))
+        {
+            if(BoardW5500_ReadEchoRequest(&rxSize, &word0, &word1) == 0U)
+            {
+                BoardW5500_TcpEchoState = BOARD_W5500_TCP_STATE_IDLE;
+                return BoardEthernet_EvaluateW5300TcpEchoStatus(
+                    statusMask, (BoardTest_U16)(socketStatus << 8U),
+                    0U, 0U, record);
+            }
+            statusMask |= BOARD_ETHERNET_TCP_ECHO_RX_AVAILABLE;
+            gBoardEthernetTcpEchoSnapshot.rxSize = rxSize;
+            gBoardEthernetTcpEchoSnapshot.rxFrameLength = 4U;
+            gBoardEthernetTcpEchoSnapshot.rxWord0 = word0;
+            gBoardEthernetTcpEchoSnapshot.rxWord1 = word1;
+            if((word0 == 0x4254U) && (word1 == 0x5354U))
+            {
+                statusMask |= BOARD_ETHERNET_TCP_ECHO_RX_MATCH;
+            }
+            if(((statusMask & BOARD_ETHERNET_TCP_ECHO_RX_MATCH) == 0U) ||
+               (BoardW5500_SendEchoResponse(&txFree) == 0U))
+            {
+                (void)BoardW5500_CloseSocket0();
+                BoardW5500_TcpEchoState = BOARD_W5500_TCP_STATE_IDLE;
+                gBoardEthernetTcpEchoSnapshot.statusMask = statusMask;
+                return BoardEthernet_EvaluateW5300TcpEchoStatus(
+                    statusMask, (BoardTest_U16)(socketStatus << 8U),
+                    4U, 0U, record);
+            }
+            statusMask |= BOARD_ETHERNET_TCP_ECHO_TX_FREE;
+            gBoardEthernetTcpEchoSnapshot.txFreeLow = txFree;
+            BoardW5500_TcpEchoState = BOARD_W5500_TCP_STATE_WAIT_SENDOK;
+        }
+    }
+    else
+    {
+        interruptStatus = BoardW5500_ReadByte(BOARD_W5500_SN_IR,
+                                              BOARD_W5500_BLOCK_SOCKET0,
+                                              &ok);
+        gBoardEthernetTcpEchoSnapshot.sendStatus = interruptStatus;
+        if((ok != 0U) &&
+           ((interruptStatus & BOARD_W5500_SOCKET_INTERRUPT_SENDOK) != 0U))
+        {
+            statusMask |= BOARD_ETHERNET_TCP_ECHO_TX_SENT;
+            (void)BoardW5500_WriteByte(BOARD_W5500_SN_IR,
+                                        BOARD_W5500_BLOCK_SOCKET0,
+                                        BOARD_W5500_SOCKET_INTERRUPT_SENDOK);
+            BoardW5500_SendPending = 0U;
+            if(BoardW5500_CloseSocket0() != 0U)
+            {
+                statusMask |= BOARD_ETHERNET_TCP_ECHO_CLOSE_CLOSED;
+                gBoardEthernetTcpEchoSnapshot.closedStatus =
+                    BOARD_W5500_SOCKET_STATUS_CLOSED;
+            }
+            BoardW5500_TcpEchoState = BOARD_W5500_TCP_STATE_IDLE;
+            gBoardEthernetTcpEchoSnapshot.statusMask = statusMask;
+            return BoardEthernet_EvaluateW5300TcpEchoStatus(
+                statusMask, (BoardTest_U16)(socketStatus << 8U), 4U,
+                gBoardEthernetTcpEchoSnapshot.txFreeLow, record);
+        }
+        if((ok == 0U) ||
+           ((interruptStatus & BOARD_W5500_SOCKET_INTERRUPT_TIMEOUT) != 0U))
+        {
+            BoardW5500_SendPending = 0U;
+            BoardW5500_TcpEchoState = BOARD_W5500_TCP_STATE_IDLE;
+            gBoardEthernetTcpEchoSnapshot.statusMask = statusMask;
+            return BoardEthernet_EvaluateW5300TcpEchoStatus(
+                statusMask, (BoardTest_U16)(socketStatus << 8U), 4U,
+                gBoardEthernetTcpEchoSnapshot.txFreeLow, record);
+        }
+    }
+
+    gBoardEthernetTcpEchoSnapshot.statusMask = statusMask;
+    BoardW5500_SetRunningRecord(record, statusMask,
+                                BOARD_ETHERNET_TCP_ECHO_REQUIRED_MASK,
+                                BOARD_ETHERNET_TCP_ECHO_DIAGNOSTIC_MASK);
+    return BOARD_TEST_RESULT_RUNNING;
+}
+
 void BoardW5500_EnableTcpStandby(void)
 {
     BoardW5500_TcpStandbyEnabled = 1U;
@@ -754,13 +1508,6 @@ void BoardW5500_EnableTcpStandby(void)
 
 void BoardW5500_DisableTcpStandby(void)
 {
-    if((BoardW5500_TcpStandbyEnabled != 0U) &&
-       (BoardW5500_TcpStandbyState != BOARD_W5500_STANDBY_DISABLED))
-    {
-        (void)BoardW5500_WriteByte(BOARD_W5500_SN_CR,
-                                    BOARD_W5500_BLOCK_SOCKET0,
-                                    BOARD_W5500_SOCKET_COMMAND_CLOSE);
-    }
     BoardW5500_TcpStandbyEnabled = 0U;
     BoardW5500_TcpStandbyState = BOARD_W5500_STANDBY_DISABLED;
 }
@@ -771,6 +1518,10 @@ void BoardW5500_ServiceTcpStandby(BoardTest_StandbyServiceStatus *status)
     BoardTest_U16 ok;
 
     if(BoardW5500_TcpStandbyEnabled == 0U)
+    {
+        return;
+    }
+    if(BoardW5500_CheckPendingSend() != BOARD_W5500_SEND_READY)
     {
         return;
     }

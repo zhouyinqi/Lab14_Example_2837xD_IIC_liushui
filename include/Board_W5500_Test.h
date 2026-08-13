@@ -51,6 +51,11 @@ extern volatile BoardW5500_BootPinSnapshot gBoardW5500BootPinSnapshot;
 BoardTest_U16 BoardW5500_IsBootPinMapCompatible(
     const BoardProfile_HardwareDescriptor *hardware);
 BoardTest_Result BoardW5500_RunBasicTest(BoardTest_Record *record);
+BoardTest_Result BoardW5500_RunSocketTest(BoardTest_Record *record);
+BoardTest_Result BoardW5500_RunTcpLinkTest(BoardTest_Record *record);
+BoardTest_Result BoardW5500_RunTcpEchoTest(BoardTest_Record *record);
+BoardTest_Result BoardW5500_RunTcpStabilityTest(BoardTest_Record *record);
+void BoardW5500_AbortTcpTests(void);
 void BoardW5500_EnableTcpStandby(void);
 void BoardW5500_DisableTcpStandby(void);
 void BoardW5500_ServiceTcpStandby(BoardTest_StandbyServiceStatus *status);

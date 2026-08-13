@@ -30,6 +30,13 @@ static void TestKnownHardwareMatrix(void)
     assert(hardware->pins.scibTransmit == 14U);
     assert(hardware->pins.scibReceive == 15U);
     assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_SPIB_INTERNAL) != 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_ETHERNET_SOCKET) != 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_ETHERNET_TCP_LINK) != 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_ETHERNET_TCP_ECHO) != 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_ETHERNET_TCP_STABILITY) != 0U);
 
     BoardProfile_Clear();
     assert(BoardProfile_Select(BOARD_PROFILE_ID_LOW_VOLTAGE_INVERTER) ==
@@ -89,7 +96,18 @@ static void TestKnownHardwareMatrix(void)
     assert((BoardProfile_GetImplementedCapabilities() &
             BOARD_PROFILE_CAP_RS422) != 0UL);
     assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_GPIO) != 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_ADC_BASIC) != 0U);
+    assert((BoardProfile_GetImplementedCapabilities() &
+            BOARD_PROFILE_CAP_ADC) != 0UL);
+    assert(BoardProfile_IsCapabilityValidated(BOARD_PROFILE_CAP_ADC) == 0U);
     assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_ETHERNET) != 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_ETHERNET_SOCKET) != 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_ETHERNET_TCP_LINK) != 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_ETHERNET_TCP_ECHO) != 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_ETHERNET_TCP_STABILITY) != 0U);
     assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_CAN_EXTERNAL) != 0U);
     assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_SCI_HOST) == 0U);
     assert(BoardProfile_IsTestSupported(

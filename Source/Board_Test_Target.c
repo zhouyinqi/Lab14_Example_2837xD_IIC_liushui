@@ -897,15 +897,31 @@ BoardTest_Result BoardTest_TargetExecute(BoardTest_U16 testId,
             return BoardEthernet_RunW5300BasicTest(record);
 
         case BOARD_TEST_ID_ETHERNET_SOCKET:
+            if(BoardTest_TargetHostBackend == BOARD_TEST_HOST_BACKEND_W5500)
+            {
+                return BoardW5500_RunSocketTest(record);
+            }
             return BoardEthernet_RunW5300SocketTest(record);
 
         case BOARD_TEST_ID_ETHERNET_TCP_LINK:
+            if(BoardTest_TargetHostBackend == BOARD_TEST_HOST_BACKEND_W5500)
+            {
+                return BoardW5500_RunTcpLinkTest(record);
+            }
             return BoardEthernet_RunW5300TcpLinkTest(record);
 
         case BOARD_TEST_ID_ETHERNET_TCP_ECHO:
+            if(BoardTest_TargetHostBackend == BOARD_TEST_HOST_BACKEND_W5500)
+            {
+                return BoardW5500_RunTcpEchoTest(record);
+            }
             return BoardEthernet_RunW5300TcpEchoTest(record);
 
         case BOARD_TEST_ID_ETHERNET_TCP_STABILITY:
+            if(BoardTest_TargetHostBackend == BOARD_TEST_HOST_BACKEND_W5500)
+            {
+                return BoardW5500_RunTcpStabilityTest(record);
+            }
             return BoardEthernet_RunW5300TcpStabilityTest(record);
 
         default:
@@ -1007,6 +1023,10 @@ void BoardTest_TargetPoll(void)
             BoardEthernet_AbortW5300TcpLinkTest();
             BoardEthernet_AbortW5300TcpEchoTest();
             BoardEthernet_AbortW5300TcpStabilityTest();
+        }
+        else
+        {
+            BoardW5500_AbortTcpTests();
         }
         BoardSci_AbortRs485ExternalTest();
         BoardSci_AbortRs422ExternalTest();

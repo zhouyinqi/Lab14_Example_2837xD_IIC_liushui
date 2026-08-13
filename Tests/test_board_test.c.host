@@ -397,10 +397,16 @@ static void TestBoardProfiles(void)
     assert(profile->id == BOARD_PROFILE_ID_LOW_ALTITUDE_UNIFIED);
     assert(hardware->boardId == BOARD_PROFILE_ID_LOW_ALTITUDE_UNIFIED);
     assert(hardware->ethernetInterface == BOARD_PROFILE_ETHERNET_SPIC_W5500);
-    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_ADC_BASIC) == 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_ADC_BASIC) != 0U);
     assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_GPIO) != 0U);
     assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_ETHERNET) != 0U);
-    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_ETHERNET_SOCKET) == 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_ETHERNET_SOCKET) != 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_ETHERNET_TCP_LINK) != 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_ETHERNET_TCP_ECHO) != 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_ETHERNET_TCP_STABILITY) != 0U);
     assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_CAN_HOST) != 0U);
     assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_CAN_EXTERNAL) != 0U);
     assert(hardware->pins.canBTransmit == 6U);
@@ -1155,7 +1161,58 @@ static void TestW5500BootPinCompatibility(void)
 
 static void TestAdcBasicEvaluation(void)
 {
+    static const BoardTest_U16 expectedSignals[BOARD_ADC_MAX_CHANNEL_COUNT] =
+    {
+        BOARD_ADC_SIGNAL_IU1,
+        BOARD_ADC_SIGNAL_IV1,
+        BOARD_ADC_SIGNAL_IW1,
+        BOARD_ADC_SIGNAL_IU2,
+        BOARD_ADC_SIGNAL_IV2,
+        BOARD_ADC_SIGNAL_IW2,
+        BOARD_ADC_SIGNAL_UDC1,
+        BOARD_ADC_SIGNAL_UDC2,
+        BOARD_ADC_SIGNAL_MOTOR_TEMPERATURE,
+        BOARD_ADC_SIGNAL_FAULT_1,
+        BOARD_ADC_SIGNAL_FAULT_2,
+        BOARD_ADC_SIGNAL_D5V,
+        BOARD_ADC_SIGNAL_A5V,
+        BOARD_ADC_SIGNAL_INVERTER_TEMPERATURE_1,
+        BOARD_ADC_SIGNAL_INVERTER_TEMPERATURE_2,
+        BOARD_ADC_SIGNAL_UUV1,
+        BOARD_ADC_SIGNAL_UVW1,
+        BOARD_ADC_SIGNAL_UUV2,
+        BOARD_ADC_SIGNAL_UVW2
+    };
+    static const BoardTest_U16 expectedModules[BOARD_ADC_MAX_CHANNEL_COUNT] =
+    {
+        BOARD_ADC_MODULE_D,
+        BOARD_ADC_MODULE_C,
+        BOARD_ADC_MODULE_B,
+        BOARD_ADC_MODULE_A,
+        BOARD_ADC_MODULE_B,
+        BOARD_ADC_MODULE_C,
+        BOARD_ADC_MODULE_A,
+        BOARD_ADC_MODULE_D,
+        BOARD_ADC_MODULE_A,
+        BOARD_ADC_MODULE_D,
+        BOARD_ADC_MODULE_D,
+        BOARD_ADC_MODULE_B,
+        BOARD_ADC_MODULE_A,
+        BOARD_ADC_MODULE_A,
+        BOARD_ADC_MODULE_A,
+        BOARD_ADC_MODULE_D,
+        BOARD_ADC_MODULE_C,
+        BOARD_ADC_MODULE_B,
+        BOARD_ADC_MODULE_A
+    };
+    static const BoardTest_U16 expectedChannels[BOARD_ADC_MAX_CHANNEL_COUNT] =
+    {
+        0U, 3U, 3U, 15U, 2U, 2U, 14U, 1U, 3U, 2U,
+        3U, 1U, 2U, 4U, 5U, 4U, 4U, 0U, 0U
+    };
+    BoardAdc_ChannelConfig config;
     BoardTest_Record record;
+    BoardTest_U16 index;
     BoardTest_U16 raw;
     float voltage;
 
@@ -1182,6 +1239,47 @@ static void TestAdcBasicEvaluation(void)
     voltage = BoardAdc_RawToVoltage(BOARD_ADC_RAW_MAX);
     assert(voltage > 3.29F);
     assert(voltage <= BOARD_ADC_REFERENCE_VOLTAGE_V);
+
+    assert(BoardAdc_GetChannelCount(
+               BOARD_PROFILE_ID_LOW_ALTITUDE_UNIFIED,
+               BOARD_PROFILE_HARDWARE_REVISION_LOW_ALTITUDE_V01) ==
+           BOARD_ADC_MAX_CHANNEL_COUNT);
+    for(index = 0U; index < BOARD_ADC_MAX_CHANNEL_COUNT; index++)
+    {
+        assert(BoardAdc_GetChannelConfig(
+                   BOARD_PROFILE_ID_LOW_ALTITUDE_UNIFIED,
+                   BOARD_PROFILE_HARDWARE_REVISION_LOW_ALTITUDE_V01,
+                   index,
+                   &config) != 0U);
+        assert(config.signalId == expectedSignals[index]);
+        assert(config.module == expectedModules[index]);
+        assert(config.channel == expectedChannels[index]);
+    }
+    assert(BoardAdc_GetChannelConfig(
+               BOARD_PROFILE_ID_LOW_ALTITUDE_UNIFIED,
+               BOARD_PROFILE_HARDWARE_REVISION_LOW_ALTITUDE_V01,
+               BOARD_ADC_MAX_CHANNEL_COUNT,
+               &config) == 0U);
+
+    assert(BoardAdc_EvaluateChannelScan(
+               BOARD_ADC_BASIC_STATUS_REQUIRED_MASK,
+               BOARD_ADC_MAX_CHANNEL_COUNT,
+               BOARD_ADC_MAX_CHANNEL_COUNT,
+               BOARD_ADC_NO_FAILED_CHANNEL,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x001FFFFFUL);
+    assert(record.measuredValue == 19.0F);
+
+    assert(BoardAdc_EvaluateChannelScan(
+               (BoardTest_U16)(BOARD_ADC_BASIC_STATUS_REQUIRED_MASK &
+                               ~BOARD_ADC_BASIC_CONVERSION_DONE),
+               18U,
+               BOARD_ADC_MAX_CHANNEL_COUNT,
+               7U,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_ADC_SAMPLE);
+    assert(record.rawValue == 0x00170007UL);
 }
 
 static void TestSpiLoopbackEvaluation(void)
