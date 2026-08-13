@@ -46,6 +46,8 @@ extern "C" {
 #define BOARD_PROFILE_CAP_FPGA_DIDO           0x00100000UL
 #define BOARD_PROFILE_CAP_RS422               0x00200000UL
 #define BOARD_PROFILE_CAP_SPIB                0x00400000UL
+#define BOARD_PROFILE_CAP_SPIB_FLASH          0x00800000UL
+#define BOARD_PROFILE_CAP_SPIB_FRAM           0x01000000UL
 
 typedef enum
 {
@@ -85,6 +87,12 @@ typedef struct
     BoardTest_U16 rs422Receive;
     BoardTest_U16 rs422TransmitMux;
     BoardTest_U16 rs422ReceiveMux;
+    BoardTest_U16 spibSimo;
+    BoardTest_U16 spibSomi;
+    BoardTest_U16 spibClock;
+    BoardTest_U16 spibFlashChipSelect;
+    BoardTest_U16 spibFramChipSelect;
+    BoardTest_U16 spibMux;
 } BoardProfile_PinMap;
 
 typedef struct

@@ -105,10 +105,28 @@ static void TestKnownHardwareMatrix(void)
             BOARD_PROFILE_CAP_SPIB) != 0UL);
     assert((BoardProfile_GetImplementedCapabilities() &
             BOARD_PROFILE_CAP_SPIB_FLASH_FRAM) == 0UL);
+    assert((BoardProfile_GetImplementedCapabilities() &
+            BOARD_PROFILE_CAP_SPIB_FLASH) != 0UL);
+    assert((BoardProfile_GetImplementedCapabilities() &
+            BOARD_PROFILE_CAP_SPIB_FRAM) != 0UL);
     assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_SPIB_INTERNAL) != 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_SPIB_FLASH_EXTERNAL) != 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_SPIB_FRAM_EXTERNAL) != 0U);
     assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_SPIC_INTERNAL) == 0U);
     assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_SPI_EXTERNAL) == 0U);
     assert(BoardProfile_IsCapabilityValidated(BOARD_PROFILE_CAP_SPIB) != 0U);
+    assert(BoardProfile_IsCapabilityValidated(
+               BOARD_PROFILE_CAP_SPIB_FLASH) == 0U);
+    assert(BoardProfile_IsCapabilityValidated(
+               BOARD_PROFILE_CAP_SPIB_FRAM) != 0U);
+    assert(hardware->pins.spibSimo == 63U);
+    assert(hardware->pins.spibSomi == 64U);
+    assert(hardware->pins.spibClock == 65U);
+    assert(hardware->pins.spibFlashChipSelect == 66U);
+    assert(hardware->pins.spibFramChipSelect == 62U);
+    assert(hardware->pins.spibMux == 15U);
     assert((hardware->validatedCapabilities &
             ~hardware->implementedCapabilities) == 0UL);
 }

@@ -856,6 +856,12 @@ BoardTest_Result BoardTest_TargetExecute(BoardTest_U16 testId,
         case BOARD_TEST_ID_SPI_EXTERNAL:
             return BoardSpi_RunSpicExternalTest(record);
 
+        case BOARD_TEST_ID_SPIB_FLASH_EXTERNAL:
+            return BoardSpi_RunSpibFlashExternalTest(record);
+
+        case BOARD_TEST_ID_SPIB_FRAM_EXTERNAL:
+            return BoardSpi_RunSpibFramExternalTest(record);
+
         case BOARD_TEST_ID_GPIO:
             return BoardGpio_RunProgramLedTest(record);
 

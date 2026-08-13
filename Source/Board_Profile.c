@@ -54,7 +54,8 @@ static const BoardProfile_Descriptor BoardProfile_Descriptors[] =
         BOARD_PROFILE_CAP_CAN_A |
         BOARD_PROFILE_CAP_CAN_B |
         BOARD_PROFILE_CAP_SPIB |
-        BOARD_PROFILE_CAP_SPIB_FLASH_FRAM |
+        BOARD_PROFILE_CAP_SPIB_FLASH |
+        BOARD_PROFILE_CAP_SPIB_FRAM |
         BOARD_PROFILE_CAP_SPIC_EXTERNAL,
         "Low altitude unified control board"
     }
@@ -87,14 +88,17 @@ static const BoardProfile_Descriptor BoardProfile_Descriptors[] =
      BOARD_PROFILE_CAP_GPIO | \
      BOARD_PROFILE_CAP_CAN_B | \
      BOARD_PROFILE_CAP_RS422 | \
-     BOARD_PROFILE_CAP_SPIB)
+     BOARD_PROFILE_CAP_SPIB | \
+     BOARD_PROFILE_CAP_SPIB_FLASH | \
+     BOARD_PROFILE_CAP_SPIB_FRAM)
 
 #define BOARD_PROFILE_LOW_ALTITUDE_W5500_VALIDATED \
     (BOARD_PROFILE_CAP_SPIC_W5500 | \
      BOARD_PROFILE_CAP_GPIO | \
      BOARD_PROFILE_CAP_CAN_B | \
      BOARD_PROFILE_CAP_RS422 | \
-     BOARD_PROFILE_CAP_SPIB)
+     BOARD_PROFILE_CAP_SPIB | \
+     BOARD_PROFILE_CAP_SPIB_FRAM)
 
 static const BoardProfile_HardwareDescriptor BoardProfile_HardwareDescriptors[] =
 {
@@ -118,6 +122,9 @@ static const BoardProfile_HardwareDescriptor BoardProfile_HardwareDescriptors[] 
             144U, 143U,
             BOARD_PROFILE_PIN_UNUSED, BOARD_PROFILE_PIN_UNUSED,
             2U, 2U, 2U, 2U,
+            BOARD_PROFILE_PIN_UNUSED, BOARD_PROFILE_PIN_UNUSED,
+            BOARD_PROFILE_PIN_UNUSED, BOARD_PROFILE_PIN_UNUSED,
+            BOARD_PROFILE_PIN_UNUSED, BOARD_PROFILE_PIN_UNUSED,
             BOARD_PROFILE_PIN_UNUSED, BOARD_PROFILE_PIN_UNUSED,
             BOARD_PROFILE_PIN_UNUSED, BOARD_PROFILE_PIN_UNUSED
         }
@@ -146,6 +153,9 @@ static const BoardProfile_HardwareDescriptor BoardProfile_HardwareDescriptors[] 
             BOARD_PROFILE_PIN_UNUSED, BOARD_PROFILE_PIN_UNUSED,
             6U, 6U, 6U, 6U,
             BOARD_PROFILE_PIN_UNUSED, BOARD_PROFILE_PIN_UNUSED,
+            BOARD_PROFILE_PIN_UNUSED, BOARD_PROFILE_PIN_UNUSED,
+            BOARD_PROFILE_PIN_UNUSED, BOARD_PROFILE_PIN_UNUSED,
+            BOARD_PROFILE_PIN_UNUSED, BOARD_PROFILE_PIN_UNUSED,
             BOARD_PROFILE_PIN_UNUSED, BOARD_PROFILE_PIN_UNUSED
         }
     },
@@ -169,7 +179,8 @@ static const BoardProfile_HardwareDescriptor BoardProfile_HardwareDescriptors[] 
             BOARD_PROFILE_PIN_UNUSED, BOARD_PROFILE_PIN_UNUSED,
             6U, 6U,
             BOARD_PROFILE_PIN_UNUSED, BOARD_PROFILE_PIN_UNUSED,
-            38U, 39U, 5U, 5U
+            38U, 39U, 5U, 5U,
+            63U, 64U, 65U, 66U, 62U, 15U
         }
     }
 };
@@ -205,6 +216,10 @@ static const BoardProfile_TestCapabilityRule BoardProfile_TestRules[] =
     {BOARD_TEST_ID_SCI_HOST, BOARD_PROFILE_CAP_SCIB, 0UL, 0UL},
     {BOARD_TEST_ID_SPIA_INTERNAL, BOARD_PROFILE_CAP_SPIA, 0UL, 0UL},
     {BOARD_TEST_ID_SPIB_INTERNAL, BOARD_PROFILE_CAP_SPIB, 0UL, 0UL},
+    {BOARD_TEST_ID_SPIB_FLASH_EXTERNAL, BOARD_PROFILE_CAP_SPIB_FLASH,
+        0UL, 0UL},
+    {BOARD_TEST_ID_SPIB_FRAM_EXTERNAL, BOARD_PROFILE_CAP_SPIB_FRAM,
+        0UL, 0UL},
     {BOARD_TEST_ID_SPIC_INTERNAL, BOARD_PROFILE_CAP_SPIC_EXTERNAL, 0UL,
         BOARD_PROFILE_CAP_SPIC_W5500},
     {BOARD_TEST_ID_SPI_EXTERNAL, BOARD_PROFILE_CAP_SPIC_EXTERNAL, 0UL,

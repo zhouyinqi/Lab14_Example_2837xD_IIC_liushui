@@ -281,6 +281,29 @@ static BoardTest_Result TestExecutor(BoardTest_U16 testId,
             record);
     }
 
+    if(testId == BOARD_TEST_ID_SPIB_FLASH_EXTERNAL)
+    {
+        return BoardSpi_EvaluateSpibFlashStatus(
+            BOARD_SPIB_FLASH_REQUIRED_MASK,
+            BOARD_SPIB_FLASH_FAIL_NONE,
+            BOARD_SPIB_FLASH_MANUFACTURER_ID,
+            BOARD_SPIB_FLASH_MEMORY_TYPE,
+            BOARD_SPIB_FLASH_CAPACITY_64_MBIT,
+            record);
+    }
+
+    if(testId == BOARD_TEST_ID_SPIB_FRAM_EXTERNAL)
+    {
+        return BoardSpi_EvaluateSpibFramStatus(
+            BOARD_SPIB_FRAM_REQUIRED_MASK,
+            BOARD_SPIB_FRAM_FAIL_NONE,
+            0x00U,
+            BOARD_SPIB_FRAM_MANUFACTURER_ID,
+            BOARD_SPIB_FRAM_PRODUCT_ID_HIGH,
+            BOARD_SPIB_FRAM_PRODUCT_ID_LOW,
+            record);
+    }
+
     if(testId == BOARD_TEST_ID_SYS_CLOCK)
     {
         return BoardSystem_EvaluateMask(BOARD_SYSTEM_CLOCK_EXPECTED_MASK,
@@ -399,6 +422,14 @@ static void TestBoardProfiles(void)
     assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_SPIC_INTERNAL) == 0U);
     assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_SPI_EXTERNAL) == 0U);
     assert(BoardProfile_IsCapabilityValidated(BOARD_PROFILE_CAP_SPIB) != 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_SPIB_FLASH_EXTERNAL) != 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_SPIB_FRAM_EXTERNAL) != 0U);
+    assert(BoardProfile_IsCapabilityValidated(
+               BOARD_PROFILE_CAP_SPIB_FLASH) == 0U);
+    assert(BoardProfile_IsCapabilityValidated(
+               BOARD_PROFILE_CAP_SPIB_FRAM) != 0U);
 
     BoardProfile_Clear();
     assert(gBoardProfileRuntimeStatus.state ==
@@ -1193,6 +1224,52 @@ static void TestSpiExternalEvaluation(void)
     assert(record.errorCode == BOARD_TEST_ERROR_SPI_EXTERNAL);
     assert(record.expectedMin == (float)BOARD_SPI_EXTERNAL_REQUIRED_MASK);
     assert(record.expectedMax == (float)BOARD_SPI_EXTERNAL_DIAGNOSTIC_MASK);
+
+    assert(BoardSpi_EvaluateSpibFlashStatus(
+               BOARD_SPIB_FLASH_REQUIRED_MASK,
+               BOARD_SPIB_FLASH_FAIL_NONE,
+               BOARD_SPIB_FLASH_MANUFACTURER_ID,
+               BOARD_SPIB_FLASH_MEMORY_TYPE,
+               BOARD_SPIB_FLASH_CAPACITY_64_MBIT,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x0FEF4017UL);
+    assert(record.measuredValue == 23.0F);
+
+    assert(BoardSpi_EvaluateSpibFlashStatus(
+               (BoardTest_U16)(BOARD_SPIB_FLASH_REQUIRED_MASK &
+                               ~BOARD_SPIB_FLASH_ID_VALID),
+               BOARD_SPIB_FLASH_FAIL_ID,
+               0xEFU,
+               0x40U,
+               0x18U,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_SPIB_FLASH);
+
+    assert(BoardSpi_EvaluateSpibFramStatus(
+               BOARD_SPIB_FRAM_REQUIRED_MASK,
+               BOARD_SPIB_FRAM_FAIL_NONE,
+               0x00U,
+               BOARD_SPIB_FRAM_MANUFACTURER_ID,
+               BOARD_SPIB_FRAM_PRODUCT_ID_HIGH,
+               BOARD_SPIB_FRAM_PRODUCT_ID_LOW,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x1FFF0000UL);
+    assert(record.measuredValue == 9480.0F);
+    assert(BOARD_SPIB_FRAM_TEST_ADDRESS <= BOARD_SPIB_FRAM_MAX_ADDRESS);
+    assert((BOARD_SPIB_FRAM_TEST_XOR_PATTERN & 0x00FFU) != 0U);
+
+    assert(BoardSpi_EvaluateSpibFramStatus(
+               (BoardTest_U16)(BOARD_SPIB_FRAM_REQUIRED_MASK &
+                               ~BOARD_SPIB_FRAM_ID_VALID),
+               BOARD_SPIB_FRAM_FAIL_ID,
+               0x00U,
+               BOARD_SPIB_FRAM_MANUFACTURER_ID,
+               0x00U,
+               0x00U,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_SPIB_FRAM);
 }
 
 static void TestPwmSafetyEvaluation(void)

@@ -128,6 +128,8 @@ QString boardCapabilityText(quint32 capabilities)
     if ((capabilities & 0x00100000U) != 0U) items << QStringLiteral("FPGA-DIDO");
     if ((capabilities & 0x00200000U) != 0U) items << QStringLiteral("RS422");
     if ((capabilities & 0x00400000U) != 0U) items << QStringLiteral("SPIB");
+    if ((capabilities & 0x00800000U) != 0U) items << QStringLiteral("SPIB Flash");
+    if ((capabilities & 0x01000000U) != 0U) items << QStringLiteral("SPIB FRAM");
 
     return items.isEmpty() ? QStringLiteral("无") : items.join(QStringLiteral("、"));
 }
@@ -377,6 +379,8 @@ MainWindow::MainWindow(QWidget *parent)
     addTest(0x0312, QStringLiteral("FPGA_EMIF2_BASIC"), RefreshScope::Board);
 
     addTest(0x0302, QStringLiteral("SPIC_EXTERNAL"), RefreshScope::External);
+    addTest(0x0317, QStringLiteral("SPIB_FLASH_EXTERNAL"), RefreshScope::External);
+    addTest(0x0318, QStringLiteral("SPIB_FRAM_EXTERNAL"), RefreshScope::External);
     addTest(0x0304, QStringLiteral("EMIF_SRAM_EXTERNAL"), RefreshScope::External);
     addTest(TestEthernetBasic, QStringLiteral("ETHERNET / BASIC"), RefreshScope::External);
     addTest(TestEthernetSocket, QStringLiteral("ETHERNET / SOCKET"), RefreshScope::External);

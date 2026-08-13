@@ -1,4 +1,5 @@
 #include "Board_Spi_Test.h"
+#include "Board_Profile.h"
 
 #ifndef BOARD_TEST_HOST
 #include "F28x_Project.h"
@@ -33,6 +34,39 @@ volatile BoardSpi_ExternalSnapshot gBoardSpiExternalSnapshot =
     0U,
     0U,
     1U
+};
+
+volatile BoardSpi_FlashSnapshot gBoardSpiFlashSnapshot =
+{
+    0U,
+    BOARD_SPIB_FLASH_FAIL_NONE,
+    0U,
+    0U,
+    0U,
+    BOARD_PROFILE_PIN_UNUSED,
+    BOARD_PROFILE_PIN_UNUSED,
+    BOARD_PROFILE_PIN_UNUSED,
+    BOARD_PROFILE_PIN_UNUSED
+};
+
+volatile BoardSpi_FramSnapshot gBoardSpiFramSnapshot =
+{
+    0U,
+    BOARD_SPIB_FRAM_FAIL_NONE,
+    0U,
+    0U,
+    0U,
+    0U,
+    0U,
+    BOARD_PROFILE_PIN_UNUSED,
+    BOARD_SPIB_FRAM_TEST_ADDRESS,
+    0U,
+    0U,
+    0U,
+    0U,
+    0U,
+    0U,
+    0U
 };
 
 BoardTest_Result BoardSpi_EvaluateLoopbackStatus(BoardTest_U16 statusMask,
@@ -80,6 +114,66 @@ BoardTest_Result BoardSpi_EvaluateExternalStatus(BoardTest_U16 statusMask,
     return BOARD_TEST_RESULT_FAIL;
 }
 
+BoardTest_Result BoardSpi_EvaluateSpibFlashStatus(
+    BoardTest_U16 statusMask,
+    BoardTest_U16 failCode,
+    BoardTest_U16 manufacturerId,
+    BoardTest_U16 memoryType,
+    BoardTest_U16 capacityCode,
+    BoardTest_Record *record)
+{
+    record->rawValue =
+        (((BoardTest_U32)statusMask & 0x00FFUL) << 24U) |
+        (((BoardTest_U32)manufacturerId & 0x00FFUL) << 16U) |
+        (((BoardTest_U32)memoryType & 0x00FFUL) << 8U) |
+        ((BoardTest_U32)capacityCode & 0x00FFUL);
+    record->measuredValue = (float)capacityCode;
+    record->expectedMin = (float)BOARD_SPIB_FLASH_CAPACITY_64_MBIT;
+    record->expectedMax = (float)BOARD_SPIB_FLASH_CAPACITY_64_MBIT;
+
+    if(((statusMask & BOARD_SPIB_FLASH_REQUIRED_MASK) ==
+        BOARD_SPIB_FLASH_REQUIRED_MASK) &&
+       (failCode == BOARD_SPIB_FLASH_FAIL_NONE))
+    {
+        record->errorCode = BOARD_TEST_ERROR_NONE;
+        return BOARD_TEST_RESULT_PASS;
+    }
+
+    record->errorCode = BOARD_TEST_ERROR_SPIB_FLASH;
+    return BOARD_TEST_RESULT_FAIL;
+}
+
+BoardTest_Result BoardSpi_EvaluateSpibFramStatus(
+    BoardTest_U16 statusMask,
+    BoardTest_U16 failCode,
+    BoardTest_U16 statusRegister,
+    BoardTest_U16 manufacturerId,
+    BoardTest_U16 productIdHigh,
+    BoardTest_U16 productIdLow,
+    BoardTest_Record *record)
+{
+    (void)statusRegister;
+    (void)manufacturerId;
+    record->rawValue = (((BoardTest_U32)statusMask & 0xFFFFUL) << 16U) |
+                       ((BoardTest_U32)failCode & 0xFFFFUL);
+    record->measuredValue = (float)
+        ((((BoardTest_U32)productIdHigh & 0x00FFUL) << 8U) |
+         ((BoardTest_U32)productIdLow & 0x00FFUL));
+    record->expectedMin = (float)BOARD_SPIB_FRAM_PRODUCT_CODE;
+    record->expectedMax = (float)BOARD_SPIB_FRAM_PRODUCT_CODE;
+
+    if(((statusMask & BOARD_SPIB_FRAM_REQUIRED_MASK) ==
+        BOARD_SPIB_FRAM_REQUIRED_MASK) &&
+       (failCode == BOARD_SPIB_FRAM_FAIL_NONE))
+    {
+        record->errorCode = BOARD_TEST_ERROR_NONE;
+        return BOARD_TEST_RESULT_PASS;
+    }
+
+    record->errorCode = BOARD_TEST_ERROR_SPIB_FRAM;
+    return BOARD_TEST_RESULT_FAIL;
+}
+
 #ifndef BOARD_TEST_HOST
 
 #define BOARD_SPI_TIMEOUT   200000UL
@@ -94,8 +188,11 @@ BoardTest_Result BoardSpi_EvaluateExternalStatus(BoardTest_U16 statusMask,
 #define BOARD_SPIC_FRAM_BRR              49U
 #define BOARD_SPIC_FRAM_CS_DELAY_US      2U
 #define BOARD_SPIC_XFER_TIMEOUT          60000UL
+#define BOARD_SPIB_EXTERNAL_POLARITY     1U
+#define BOARD_SPIB_EXTERNAL_PHASE        0U
 
 #define BOARD_SPIC_CMD_WREN              0x06U
+#define BOARD_SPIC_CMD_WRDI              0x04U
 #define BOARD_SPIC_CMD_RDSR              0x05U
 #define BOARD_SPIC_CMD_READ              0x03U
 #define BOARD_SPIC_CMD_WRITE             0x02U
@@ -104,6 +201,10 @@ BoardTest_Result BoardSpi_EvaluateExternalStatus(BoardTest_U16 statusMask,
 #define BOARD_SPIC_FRAM_TEST_ADDR        0x00000000UL
 #define BOARD_SPIC_FRAM_ADDR_BYTES       3U
 #define BOARD_SPIC_FRAM_TEST_PATTERN     0xA5U
+
+#if BOARD_SPIB_FRAM_TEST_ADDRESS > BOARD_SPIB_FRAM_MAX_ADDRESS
+#error BOARD_SPIB_FRAM_TEST_ADDRESS is outside the FM25V20A address range
+#endif
 
 static void BoardSpi_EnableClock(BoardTest_U16 testId)
 {
@@ -843,5 +944,694 @@ BoardTest_Result BoardSpi_RunSpicExternalTest(BoardTest_Record *record)
                                     fpgaFlashId);
 
     return BoardSpi_EvaluateExternalStatus(statusMask, failCode, record);
+}
+
+static BoardTest_U16 BoardSpi_SpibFlashPinsAreValid(
+    const BoardProfile_PinMap *pins)
+{
+    if((pins->spibSimo == BOARD_PROFILE_PIN_UNUSED) ||
+       (pins->spibSomi == BOARD_PROFILE_PIN_UNUSED) ||
+       (pins->spibClock == BOARD_PROFILE_PIN_UNUSED) ||
+       (pins->spibFlashChipSelect == BOARD_PROFILE_PIN_UNUSED) ||
+       (pins->spibMux == BOARD_PROFILE_PIN_UNUSED))
+    {
+        return 0U;
+    }
+
+    return 1U;
+}
+
+static BoardTest_U16 BoardSpi_SpibFramPinsAreValid(
+    const BoardProfile_PinMap *pins)
+{
+    if((pins->spibSimo == BOARD_PROFILE_PIN_UNUSED) ||
+       (pins->spibSomi == BOARD_PROFILE_PIN_UNUSED) ||
+       (pins->spibClock == BOARD_PROFILE_PIN_UNUSED) ||
+       (pins->spibFramChipSelect == BOARD_PROFILE_PIN_UNUSED) ||
+       (pins->spibMux == BOARD_PROFILE_PIN_UNUSED))
+    {
+        return 0U;
+    }
+
+    return 1U;
+}
+
+static void BoardSpi_InitSpibExternalBus(
+    const BoardProfile_PinMap *pins)
+{
+    GPIO_SetupPinMux(pins->spibSimo, GPIO_MUX_CPU1, pins->spibMux);
+    GPIO_SetupPinOptions(pins->spibSimo, GPIO_OUTPUT, GPIO_ASYNC);
+    GPIO_SetupPinMux(pins->spibSomi, GPIO_MUX_CPU1, pins->spibMux);
+    GPIO_SetupPinOptions(pins->spibSomi, GPIO_INPUT,
+                         GPIO_ASYNC | GPIO_PULLUP);
+    GPIO_SetupPinMux(pins->spibClock, GPIO_MUX_CPU1, pins->spibMux);
+    GPIO_SetupPinOptions(pins->spibClock, GPIO_OUTPUT, GPIO_ASYNC);
+    GPIO_SetupPinMux(pins->spibFlashChipSelect, GPIO_MUX_CPU1, 0U);
+    GPIO_SetupPinOptions(pins->spibFlashChipSelect, GPIO_OUTPUT,
+                         GPIO_PUSHPULL | GPIO_PULLUP);
+    GPIO_WritePin(pins->spibFlashChipSelect, 1U);
+    if(pins->spibFramChipSelect != BOARD_PROFILE_PIN_UNUSED)
+    {
+        GPIO_SetupPinMux(pins->spibFramChipSelect, GPIO_MUX_CPU1, 0U);
+        GPIO_SetupPinOptions(pins->spibFramChipSelect, GPIO_OUTPUT,
+                             GPIO_PUSHPULL | GPIO_PULLUP);
+        GPIO_WritePin(pins->spibFramChipSelect, 1U);
+    }
+
+    EALLOW;
+    DevCfgRegs.CPUSEL6.bit.SPI_B = 0U;
+    CpuSysRegs.PCLKCR8.bit.SPI_B = 1U;
+    EDIS;
+
+    SpibRegs.SPICCR.bit.SPISWRESET = 0U;
+    /* Match the validated board application: HCLK without delay. */
+    SpibRegs.SPICCR.all = 0x0007U |
+                          (BOARD_SPIB_EXTERNAL_POLARITY ? 0x0040U : 0x0000U);
+    SpibRegs.SPICTL.all = 0x0006U |
+                          (BOARD_SPIB_EXTERNAL_PHASE ? 0x0008U : 0x0000U);
+    SpibRegs.SPIBRR = BOARD_SPIC_DEFAULT_BRR;
+    SpibRegs.SPIFFTX.all = 0xE040U;
+    SpibRegs.SPIFFRX.all = 0x2044U;
+    SpibRegs.SPIFFCT.all = 0x0000U;
+    SpibRegs.SPIPRI.bit.FREE = 1U;
+    SpibRegs.SPIFFTX.bit.TXFIFO = 0U;
+    SpibRegs.SPIFFRX.bit.RXFIFORESET = 0U;
+    SpibRegs.SPIFFTX.bit.TXFIFO = 1U;
+    SpibRegs.SPIFFRX.bit.RXFIFORESET = 1U;
+    SpibRegs.SPIFFRX.bit.RXFFOVFCLR = 1U;
+    SpibRegs.SPIFFRX.bit.RXFFINTCLR = 1U;
+    SpibRegs.SPICCR.bit.SPISWRESET = 1U;
+}
+
+static BoardTest_U16 BoardSpi_SpibTransferByte(BoardTest_U16 data,
+                                                BoardTest_U16 *ok)
+{
+    BoardTest_U32 timeout;
+
+    *ok = 1U;
+    timeout = BOARD_SPIC_XFER_TIMEOUT;
+    while(SpibRegs.SPISTS.bit.BUFFULL_FLAG != 0U)
+    {
+        if(timeout-- == 0UL)
+        {
+            *ok = 0U;
+            return 0U;
+        }
+    }
+
+    SpibRegs.SPITXBUF = (data & 0x00FFU) << 8U;
+    timeout = BOARD_SPIC_XFER_TIMEOUT;
+    while(SpibRegs.SPIFFRX.bit.RXFFST == 0U)
+    {
+        if(timeout-- == 0UL)
+        {
+            *ok = 0U;
+            return 0U;
+        }
+    }
+
+    data = SpibRegs.SPIRXBUF & 0x00FFU;
+    SpibRegs.SPIFFRX.bit.RXFFOVFCLR = 1U;
+    SpibRegs.SPIFFRX.bit.RXFFINTCLR = 1U;
+    return data;
+}
+
+static BoardTest_U16 BoardSpi_ReadSpibFlashId(
+    BoardTest_U16 chipSelectPin,
+    BoardTest_U16 *id)
+{
+    BoardTest_U16 index;
+    BoardTest_U16 ok;
+
+    for(index = 0U; index < 3U; index++)
+    {
+        id[index] = 0U;
+    }
+
+    GPIO_WritePin(chipSelectPin, 0U);
+    DELAY_US(2U);
+    (void)BoardSpi_SpibTransferByte(BOARD_SPIC_CMD_RDID, &ok);
+    if(ok == 0U)
+    {
+        GPIO_WritePin(chipSelectPin, 1U);
+        return 0U;
+    }
+
+    for(index = 0U; index < 3U; index++)
+    {
+        id[index] = BoardSpi_SpibTransferByte(0x00U, &ok);
+        if(ok == 0U)
+        {
+            GPIO_WritePin(chipSelectPin, 1U);
+            return 0U;
+        }
+    }
+
+    DELAY_US(2U);
+    GPIO_WritePin(chipSelectPin, 1U);
+    return 1U;
+}
+
+static BoardTest_U16 BoardSpi_SpibFlashIdIsValid(
+    const BoardTest_U16 *id)
+{
+    return ((id[0] == BOARD_SPIB_FLASH_MANUFACTURER_ID) &&
+            (id[1] == BOARD_SPIB_FLASH_MEMORY_TYPE) &&
+            (id[2] == BOARD_SPIB_FLASH_CAPACITY_64_MBIT)) ? 1U : 0U;
+}
+
+BoardTest_Result BoardSpi_RunSpibFlashExternalTest(BoardTest_Record *record)
+{
+    const BoardProfile_HardwareDescriptor *hardware;
+    const BoardProfile_PinMap *pins;
+    BoardTest_U16 statusMask;
+    BoardTest_U16 failCode;
+    BoardTest_U16 id[3];
+    BoardTest_U16 ok;
+
+    statusMask = 0U;
+    failCode = BOARD_SPIB_FLASH_FAIL_NONE;
+    id[0] = 0U;
+    id[1] = 0U;
+    id[2] = 0U;
+    hardware = BoardProfile_GetCurrentHardware();
+    pins = (hardware != 0) ? &hardware->pins : 0;
+
+    if((pins == 0) || (BoardSpi_SpibFlashPinsAreValid(pins) == 0U))
+    {
+        failCode = BOARD_SPIB_FLASH_FAIL_PROFILE;
+    }
+    else
+    {
+        BoardSpi_InitSpibExternalBus(pins);
+        statusMask |= BOARD_SPIB_FLASH_CONFIGURED;
+        ok = BoardSpi_ReadSpibFlashId(pins->spibFlashChipSelect, id);
+        if(ok != 0U)
+        {
+            statusMask |= BOARD_SPIB_FLASH_ID_READ;
+            if(BoardSpi_SpibFlashIdIsValid(id) != 0U)
+            {
+                statusMask |= BOARD_SPIB_FLASH_ID_VALID;
+            }
+            else
+            {
+                failCode = BOARD_SPIB_FLASH_FAIL_ID;
+            }
+        }
+        else
+        {
+            failCode = BOARD_SPIB_FLASH_FAIL_TRANSFER;
+        }
+
+        if((SpibRegs.SPISTS.bit.OVERRUN_FLAG == 0U) &&
+           (SpibRegs.SPIFFRX.bit.RXFFOVF == 0U))
+        {
+            statusMask |= BOARD_SPIB_FLASH_NO_OVERRUN;
+        }
+        GPIO_WritePin(pins->spibFlashChipSelect, 1U);
+    }
+
+    gBoardSpiFlashSnapshot.statusMask = statusMask;
+    gBoardSpiFlashSnapshot.failCode = failCode;
+    gBoardSpiFlashSnapshot.manufacturerId = id[0];
+    gBoardSpiFlashSnapshot.memoryType = id[1];
+    gBoardSpiFlashSnapshot.capacityCode = id[2];
+    gBoardSpiFlashSnapshot.simoPin =
+        (pins != 0) ? pins->spibSimo : BOARD_PROFILE_PIN_UNUSED;
+    gBoardSpiFlashSnapshot.somiPin =
+        (pins != 0) ? pins->spibSomi : BOARD_PROFILE_PIN_UNUSED;
+    gBoardSpiFlashSnapshot.clockPin =
+        (pins != 0) ? pins->spibClock : BOARD_PROFILE_PIN_UNUSED;
+    gBoardSpiFlashSnapshot.chipSelectPin =
+        (pins != 0) ? pins->spibFlashChipSelect : BOARD_PROFILE_PIN_UNUSED;
+
+    return BoardSpi_EvaluateSpibFlashStatus(statusMask,
+                                            failCode,
+                                            id[0],
+                                            id[1],
+                                            id[2],
+                                            record);
+}
+
+static void BoardSpi_SpibDeselectAll(const BoardProfile_PinMap *pins)
+{
+    if(pins->spibFlashChipSelect != BOARD_PROFILE_PIN_UNUSED)
+    {
+        GPIO_WritePin(pins->spibFlashChipSelect, 1U);
+    }
+    if(pins->spibFramChipSelect != BOARD_PROFILE_PIN_UNUSED)
+    {
+        GPIO_WritePin(pins->spibFramChipSelect, 1U);
+    }
+}
+
+static void BoardSpi_SpibFramWake(const BoardProfile_PinMap *pins)
+{
+    BoardTest_U16 ok;
+
+    BoardSpi_SpibDeselectAll(pins);
+    DELAY_US(1000U);
+    GPIO_WritePin(pins->spibFramChipSelect, 0U);
+    DELAY_US(2U);
+    (void)BoardSpi_SpibTransferByte(0x00FFU, &ok);
+    DELAY_US(2U);
+    BoardSpi_SpibDeselectAll(pins);
+    DELAY_US(1000U);
+}
+
+static BoardTest_U16 BoardSpi_ReadSpibFramStatus(
+    const BoardProfile_PinMap *pins,
+    BoardTest_U16 *statusRegister)
+{
+    BoardTest_U16 ok;
+
+    *statusRegister = 0x00FFU;
+    BoardSpi_SpibDeselectAll(pins);
+    GPIO_WritePin(pins->spibFramChipSelect, 0U);
+    DELAY_US(2U);
+    (void)BoardSpi_SpibTransferByte(BOARD_SPIC_CMD_RDSR, &ok);
+    if(ok != 0U)
+    {
+        *statusRegister = BoardSpi_SpibTransferByte(0x0000U, &ok);
+    }
+    DELAY_US(2U);
+    BoardSpi_SpibDeselectAll(pins);
+    return ok;
+}
+
+static BoardTest_U16 BoardSpi_ReadSpibFramId(
+    const BoardProfile_PinMap *pins,
+    BoardTest_U16 *id)
+{
+    BoardTest_U16 index;
+    BoardTest_U16 ok;
+
+    for(index = 0U; index < 9U; index++)
+    {
+        id[index] = 0U;
+    }
+
+    BoardSpi_SpibDeselectAll(pins);
+    GPIO_WritePin(pins->spibFramChipSelect, 0U);
+    DELAY_US(2U);
+    (void)BoardSpi_SpibTransferByte(BOARD_SPIC_CMD_RDID, &ok);
+    if(ok == 0U)
+    {
+        BoardSpi_SpibDeselectAll(pins);
+        return 0U;
+    }
+
+    for(index = 0U; index < 9U; index++)
+    {
+        id[index] = BoardSpi_SpibTransferByte(0x0000U, &ok);
+        if(ok == 0U)
+        {
+            BoardSpi_SpibDeselectAll(pins);
+            return 0U;
+        }
+    }
+
+    DELAY_US(2U);
+    BoardSpi_SpibDeselectAll(pins);
+    return 1U;
+}
+
+static BoardTest_U16 BoardSpi_SpibFramIdIsFm25v20a(
+    const BoardTest_U16 *id)
+{
+    BoardTest_U16 index;
+
+    for(index = 0U; index < 6U; index++)
+    {
+        if(id[index] != 0x007FU)
+        {
+            return 0U;
+        }
+    }
+
+    return ((id[6] == BOARD_SPIB_FRAM_MANUFACTURER_ID) &&
+            (id[7] == BOARD_SPIB_FRAM_PRODUCT_ID_HIGH) &&
+            (id[8] == BOARD_SPIB_FRAM_PRODUCT_ID_LOW)) ? 1U : 0U;
+}
+
+static BoardTest_U16 BoardSpi_SpibFramSendCommand(
+    const BoardProfile_PinMap *pins,
+    BoardTest_U16 command)
+{
+    BoardTest_U16 ok;
+
+    BoardSpi_SpibDeselectAll(pins);
+    GPIO_WritePin(pins->spibFramChipSelect, 0U);
+    DELAY_US(2U);
+    (void)BoardSpi_SpibTransferByte(command, &ok);
+    DELAY_US(2U);
+    BoardSpi_SpibDeselectAll(pins);
+    return ok;
+}
+
+static BoardTest_U16 BoardSpi_SpibFramSendAddress(BoardTest_U32 address)
+{
+    BoardTest_U16 ok;
+
+    (void)BoardSpi_SpibTransferByte(
+        (BoardTest_U16)((address >> 16U) & 0x00FFUL), &ok);
+    if(ok == 0U)
+    {
+        return 0U;
+    }
+    (void)BoardSpi_SpibTransferByte(
+        (BoardTest_U16)((address >> 8U) & 0x00FFUL), &ok);
+    if(ok == 0U)
+    {
+        return 0U;
+    }
+    (void)BoardSpi_SpibTransferByte(
+        (BoardTest_U16)(address & 0x00FFUL), &ok);
+    return ok;
+}
+
+static BoardTest_U16 BoardSpi_SpibFramReadByte(
+    const BoardProfile_PinMap *pins,
+    BoardTest_U32 address,
+    BoardTest_U16 *value)
+{
+    BoardTest_U16 ok;
+
+    *value = 0U;
+    BoardSpi_SpibDeselectAll(pins);
+    GPIO_WritePin(pins->spibFramChipSelect, 0U);
+    DELAY_US(2U);
+    (void)BoardSpi_SpibTransferByte(BOARD_SPIC_CMD_READ, &ok);
+    if((ok == 0U) || (BoardSpi_SpibFramSendAddress(address) == 0U))
+    {
+        BoardSpi_SpibDeselectAll(pins);
+        return 0U;
+    }
+
+    *value = BoardSpi_SpibTransferByte(0x0000U, &ok);
+    DELAY_US(2U);
+    BoardSpi_SpibDeselectAll(pins);
+    return ok;
+}
+
+static BoardTest_U16 BoardSpi_SpibFramWriteByte(
+    const BoardProfile_PinMap *pins,
+    BoardTest_U32 address,
+    BoardTest_U16 value)
+{
+    BoardTest_U16 ok;
+
+    BoardSpi_SpibDeselectAll(pins);
+    GPIO_WritePin(pins->spibFramChipSelect, 0U);
+    DELAY_US(2U);
+    (void)BoardSpi_SpibTransferByte(BOARD_SPIC_CMD_WRITE, &ok);
+    if((ok == 0U) || (BoardSpi_SpibFramSendAddress(address) == 0U))
+    {
+        BoardSpi_SpibDeselectAll(pins);
+        return 0U;
+    }
+
+    (void)BoardSpi_SpibTransferByte(value & 0x00FFU, &ok);
+    DELAY_US(2U);
+    BoardSpi_SpibDeselectAll(pins);
+    DELAY_US(2U);
+    return ok;
+}
+
+static BoardTest_U16 BoardSpi_SpibFramWriteEnable(
+    const BoardProfile_PinMap *pins,
+    BoardTest_U16 *statusRegister)
+{
+    if(BoardSpi_SpibFramSendCommand(pins, BOARD_SPIC_CMD_WREN) == 0U)
+    {
+        return 0U;
+    }
+    if(BoardSpi_ReadSpibFramStatus(pins, statusRegister) == 0U)
+    {
+        return 0U;
+    }
+    return ((*statusRegister & BOARD_SPIB_FRAM_STATUS_WEL) != 0U) ? 1U : 0U;
+}
+
+static BoardTest_U16 BoardSpi_SpibFramWriteDisable(
+    const BoardProfile_PinMap *pins,
+    BoardTest_U16 *statusRegister)
+{
+    if(BoardSpi_SpibFramSendCommand(pins, BOARD_SPIC_CMD_WRDI) == 0U)
+    {
+        return 0U;
+    }
+    if(BoardSpi_ReadSpibFramStatus(pins, statusRegister) == 0U)
+    {
+        return 0U;
+    }
+    return ((*statusRegister & BOARD_SPIB_FRAM_STATUS_WEL) == 0U) ? 1U : 0U;
+}
+
+static BoardTest_U16 BoardSpi_SpibFramAddressIsWritable(
+    BoardTest_U16 statusRegister,
+    BoardTest_U32 address)
+{
+    switch(statusRegister & BOARD_SPIB_FRAM_STATUS_BP_MASK)
+    {
+        case 0x0000U:
+            return 1U;
+
+        case 0x0004U:
+            return (address < 0x00030000UL) ? 1U : 0U;
+
+        case 0x0008U:
+            return (address < 0x00020000UL) ? 1U : 0U;
+
+        default:
+            return 0U;
+    }
+}
+
+BoardTest_Result BoardSpi_RunSpibFramExternalTest(BoardTest_Record *record)
+{
+    const BoardProfile_HardwareDescriptor *hardware;
+    const BoardProfile_PinMap *pins;
+    BoardTest_U16 statusMask;
+    BoardTest_U16 failCode;
+    BoardTest_U16 statusRegister;
+    BoardTest_U16 id[9];
+    BoardTest_U16 ok;
+    BoardTest_U16 index;
+    BoardTest_U16 originalValue;
+    BoardTest_U16 testValue;
+    BoardTest_U16 testReadback;
+    BoardTest_U16 restoreReadback;
+    BoardTest_U16 statusAfterWriteEnable;
+    BoardTest_U16 statusAfterRestoreEnable;
+    BoardTest_U16 finalStatusRegister;
+    BoardTest_U16 writeAttempted;
+
+    statusMask = 0U;
+    failCode = BOARD_SPIB_FRAM_FAIL_NONE;
+    statusRegister = 0x00FFU;
+    originalValue = 0U;
+    testValue = 0U;
+    testReadback = 0U;
+    restoreReadback = 0U;
+    statusAfterWriteEnable = 0x00FFU;
+    statusAfterRestoreEnable = 0x00FFU;
+    finalStatusRegister = 0x00FFU;
+    writeAttempted = 0U;
+    for(index = 0U; index < 9U; index++)
+    {
+        id[index] = 0U;
+    }
+
+    hardware = BoardProfile_GetCurrentHardware();
+    pins = (hardware != 0) ? &hardware->pins : 0;
+    if((pins == 0) || (BoardSpi_SpibFramPinsAreValid(pins) == 0U))
+    {
+        failCode = BOARD_SPIB_FRAM_FAIL_PROFILE;
+    }
+    else
+    {
+        BoardSpi_InitSpibExternalBus(pins);
+        BoardSpi_SpibDeselectAll(pins);
+        statusMask |= BOARD_SPIB_FRAM_CONFIGURED;
+        BoardSpi_SpibFramWake(pins);
+
+        ok = BoardSpi_ReadSpibFramStatus(pins, &statusRegister);
+        if((ok != 0U) && (statusRegister != 0x00FFU))
+        {
+            statusMask |= BOARD_SPIB_FRAM_STATUS_READ;
+            if(BoardSpi_SpibFramAddressIsWritable(
+                   statusRegister, BOARD_SPIB_FRAM_TEST_ADDRESS) != 0U)
+            {
+                statusMask |= BOARD_SPIB_FRAM_ADDRESS_WRITABLE;
+            }
+            else
+            {
+                failCode = BOARD_SPIB_FRAM_FAIL_PROTECTED;
+            }
+        }
+        else
+        {
+            failCode = BOARD_SPIB_FRAM_FAIL_STATUS;
+        }
+
+        ok = BoardSpi_ReadSpibFramId(pins, id);
+        if(ok != 0U)
+        {
+            statusMask |= BOARD_SPIB_FRAM_ID_READ;
+            if(BoardSpi_SpibFramIdIsFm25v20a(id) != 0U)
+            {
+                statusMask |= BOARD_SPIB_FRAM_ID_VALID;
+            }
+            else if(failCode == BOARD_SPIB_FRAM_FAIL_NONE)
+            {
+                failCode = BOARD_SPIB_FRAM_FAIL_ID;
+            }
+        }
+        else if(failCode == BOARD_SPIB_FRAM_FAIL_NONE)
+        {
+            failCode = BOARD_SPIB_FRAM_FAIL_TRANSFER;
+        }
+
+        if(failCode == BOARD_SPIB_FRAM_FAIL_NONE)
+        {
+            ok = BoardSpi_SpibFramReadByte(
+                pins, BOARD_SPIB_FRAM_TEST_ADDRESS, &originalValue);
+            if(ok != 0U)
+            {
+                statusMask |= BOARD_SPIB_FRAM_ORIGINAL_READ;
+                testValue = (originalValue ^
+                             BOARD_SPIB_FRAM_TEST_XOR_PATTERN) & 0x00FFU;
+            }
+            else
+            {
+                failCode = BOARD_SPIB_FRAM_FAIL_ORIGINAL_READ;
+            }
+        }
+
+        if(failCode == BOARD_SPIB_FRAM_FAIL_NONE)
+        {
+            ok = BoardSpi_SpibFramWriteEnable(
+                pins, &statusAfterWriteEnable);
+            if(ok != 0U)
+            {
+                statusMask |= BOARD_SPIB_FRAM_WRITE_ENABLED;
+                writeAttempted = 1U;
+                ok = BoardSpi_SpibFramWriteByte(
+                    pins, BOARD_SPIB_FRAM_TEST_ADDRESS, testValue);
+                if(ok != 0U)
+                {
+                    statusMask |= BOARD_SPIB_FRAM_TEST_WRITTEN;
+                }
+                else
+                {
+                    failCode = BOARD_SPIB_FRAM_FAIL_WRITE;
+                }
+            }
+            else
+            {
+                failCode = BOARD_SPIB_FRAM_FAIL_WRITE_ENABLE;
+            }
+        }
+
+        if(writeAttempted != 0U)
+        {
+            ok = BoardSpi_SpibFramReadByte(
+                pins, BOARD_SPIB_FRAM_TEST_ADDRESS, &testReadback);
+            if((ok != 0U) && (testReadback == testValue))
+            {
+                statusMask |= BOARD_SPIB_FRAM_TEST_READBACK;
+            }
+            else if(failCode == BOARD_SPIB_FRAM_FAIL_NONE)
+            {
+                failCode = BOARD_SPIB_FRAM_FAIL_TEST_READBACK;
+            }
+
+            ok = BoardSpi_SpibFramWriteEnable(
+                pins, &statusAfterRestoreEnable);
+            if(ok != 0U)
+            {
+                ok = BoardSpi_SpibFramWriteByte(
+                    pins, BOARD_SPIB_FRAM_TEST_ADDRESS, originalValue);
+                if(ok != 0U)
+                {
+                    statusMask |= BOARD_SPIB_FRAM_RESTORE_WRITTEN;
+                }
+                else
+                {
+                    failCode = BOARD_SPIB_FRAM_FAIL_RESTORE_WRITE;
+                }
+            }
+            else
+            {
+                failCode = BOARD_SPIB_FRAM_FAIL_RESTORE_WRITE;
+            }
+
+            ok = BoardSpi_SpibFramReadByte(
+                pins, BOARD_SPIB_FRAM_TEST_ADDRESS, &restoreReadback);
+            if((ok != 0U) && (restoreReadback == originalValue))
+            {
+                statusMask |= BOARD_SPIB_FRAM_RESTORE_VERIFIED;
+            }
+            else
+            {
+                failCode = BOARD_SPIB_FRAM_FAIL_RESTORE_VERIFY;
+            }
+        }
+
+        ok = BoardSpi_SpibFramWriteDisable(pins, &finalStatusRegister);
+        if(ok != 0U)
+        {
+            statusMask |= BOARD_SPIB_FRAM_WRITE_DISABLED;
+        }
+        else if(failCode == BOARD_SPIB_FRAM_FAIL_NONE)
+        {
+            failCode = BOARD_SPIB_FRAM_FAIL_WRITE_DISABLE;
+        }
+
+        if((SpibRegs.SPISTS.bit.OVERRUN_FLAG == 0U) &&
+           (SpibRegs.SPIFFRX.bit.RXFFOVF == 0U))
+        {
+            statusMask |= BOARD_SPIB_FRAM_NO_OVERRUN;
+        }
+        else if(failCode == BOARD_SPIB_FRAM_FAIL_NONE)
+        {
+            failCode = BOARD_SPIB_FRAM_FAIL_TRANSFER;
+        }
+        BoardSpi_SpibDeselectAll(pins);
+    }
+
+    gBoardSpiFramSnapshot.statusMask = statusMask;
+    gBoardSpiFramSnapshot.failCode = failCode;
+    gBoardSpiFramSnapshot.statusRegister = statusRegister;
+    gBoardSpiFramSnapshot.manufacturerId = id[6];
+    gBoardSpiFramSnapshot.productIdHigh = id[7];
+    gBoardSpiFramSnapshot.productIdLow = id[8];
+    gBoardSpiFramSnapshot.continuationCount = 0U;
+    for(index = 0U; index < 6U; index++)
+    {
+        if(id[index] == 0x007FU)
+        {
+            gBoardSpiFramSnapshot.continuationCount++;
+        }
+    }
+    gBoardSpiFramSnapshot.chipSelectPin =
+        (pins != 0) ? pins->spibFramChipSelect : BOARD_PROFILE_PIN_UNUSED;
+    gBoardSpiFramSnapshot.testAddress = BOARD_SPIB_FRAM_TEST_ADDRESS;
+    gBoardSpiFramSnapshot.originalValue = originalValue;
+    gBoardSpiFramSnapshot.testValue = testValue;
+    gBoardSpiFramSnapshot.testReadback = testReadback;
+    gBoardSpiFramSnapshot.restoreReadback = restoreReadback;
+    gBoardSpiFramSnapshot.statusAfterWriteEnable = statusAfterWriteEnable;
+    gBoardSpiFramSnapshot.statusAfterRestoreEnable = statusAfterRestoreEnable;
+    gBoardSpiFramSnapshot.finalStatusRegister = finalStatusRegister;
+
+    return BoardSpi_EvaluateSpibFramStatus(statusMask,
+                                           failCode,
+                                           statusRegister,
+                                           id[6],
+                                           id[7],
+                                           id[8],
+                                           record);
 }
 #endif
