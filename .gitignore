@@ -3,6 +3,9 @@ Debug/
 Release/
 outputs/
 
+# PC tooling dependencies (not DSP sources)
+node_modules/
+
 # C2000 compiler and linker outputs
 *.obj
 *.d
@@ -26,8 +29,8 @@ Thumbs.db
 Desktop.ini
 
 # Host test executable output
-Tests/*.exe
-Tests/*.obj
+HPD_BoardTest_DSP/Tests/*.exe
+HPD_BoardTest_DSP/Tests/*.obj
 
 # Qt Creator / CMake generated output
 UpperComputer/build*/

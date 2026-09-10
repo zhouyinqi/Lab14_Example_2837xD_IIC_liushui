@@ -10,7 +10,8 @@ find_package(Qt6 6.5 REQUIRED COMPONENTS Widgets Network SerialPort)
 
 qt_standard_project_setup()
 
-qt_add_executable(HpdBoardTestHost WIN32
+set(HPD_HOST_SOURCES
+    src/FullTextComboBox.h
     src/DspTcpClient.cpp
     src/DspTcpClient.h
     src/DspTestProtocol.cpp
@@ -23,8 +24,9 @@ qt_add_executable(HpdBoardTestHost WIN32
     src/ScibSerialClient.h
     src/ZlgCanClient.cpp
     src/ZlgCanClient.h
-    src/main.cpp
 )
+
+qt_add_executable(HpdBoardTestHost WIN32 ${HPD_HOST_SOURCES} src/main.cpp)
 
 target_link_libraries(HpdBoardTestHost
     PRIVATE
@@ -44,4 +46,18 @@ if(WIN32)
                 -OutputDirectory "$<TARGET_FILE_DIR:HpdBoardTestHost>"
         VERBATIM
     )
+endif()
+
+option(HPD_BUILD_TESTS "Build host regression tests (no hardware required)" OFF)
+if(HPD_BUILD_TESTS)
+    enable_testing()
+    find_package(Qt6 6.5 REQUIRED COMPONENTS Test)
+    qt_add_executable(HpdHostTests ${HPD_HOST_SOURCES}
+        tests/MainWindowTests.cpp)
+    target_include_directories(HpdHostTests PRIVATE src)
+    target_link_libraries(HpdHostTests PRIVATE
+        Qt6::Network Qt6::SerialPort Qt6::Widgets Qt6::Test)
+    set_target_properties(HpdHostTests PROPERTIES WIN32_EXECUTABLE FALSE)
+    add_test(NAME HpdHostTests COMMAND HpdHostTests -platform offscreen)
+    set_tests_properties(HpdHostTests PROPERTIES TIMEOUT 90)
 endif()

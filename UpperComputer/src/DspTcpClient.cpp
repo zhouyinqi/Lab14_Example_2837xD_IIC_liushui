@@ -7,6 +7,7 @@ DspTcpClient::DspTcpClient(QObject *parent)
 {
     m_socket.setProxy(QNetworkProxy::NoProxy);
     m_reconnectTimer.setInterval(2000);
+    m_reconnectTimer.setSingleShot(true);
     m_connectTimer.setInterval(5000);
     m_connectTimer.setSingleShot(true);
     m_responseTimer.setInterval(3000);
@@ -22,10 +23,7 @@ DspTcpClient::DspTcpClient(QObject *parent)
                 .arg(m_host)
                 .arg(m_port));
         m_socket.abort();
-        if(m_autoReconnect)
-        {
-            m_reconnectTimer.start();
-        }
+        scheduleAutomaticReconnect();
     });
     connect(&m_responseTimer, &QTimer::timeout, this, [this] {
         if (!m_requestInFlight || !isConnected()) {
@@ -33,19 +31,24 @@ DspTcpClient::DspTcpClient(QObject *parent)
         }
         emit protocolError(QStringLiteral("DSP 响应超时，正在自动重连。"));
         m_socket.abort();
-        if (m_autoReconnect) {
-            m_reconnectTimer.start();
-        }
+        scheduleAutomaticReconnect();
     });
     connect(&m_reconnectTimer, &QTimer::timeout, this, [this] {
         if (!m_autoReconnect || isConnected() || m_host.isEmpty()) {
             return;
         }
+        if (m_automaticReconnectAttempts >= MaxAutomaticReconnectAttempts) {
+            scheduleAutomaticReconnect();
+            return;
+        }
+        ++m_automaticReconnectAttempts;
         m_socket.abort();
         emit connectionProgress(
-            QStringLiteral("正在自动重连 DSP：%1:%2。")
+            QStringLiteral("正在自动重连 DSP：%1:%2（%3/%4）。")
                 .arg(m_host)
-                .arg(m_port));
+                .arg(m_port)
+                .arg(m_automaticReconnectAttempts)
+                .arg(MaxAutomaticReconnectAttempts));
         m_socket.connectToHost(m_host, m_port);
         m_connectTimer.start();
     });
@@ -59,9 +62,7 @@ DspTcpClient::DspTcpClient(QObject *parent)
         m_connectTimer.stop();
         clearPendingRequests();
         emit connectionChanged(false, QStringLiteral("连接已断开"));
-        if (m_autoReconnect) {
-            m_reconnectTimer.start();
-        }
+        scheduleAutomaticReconnect();
     });
     connect(&m_socket, &QTcpSocket::readyRead, this, [this] {
         m_rxBuffer.append(m_socket.readAll());
@@ -71,11 +72,7 @@ DspTcpClient::DspTcpClient(QObject *parent)
             [this](QAbstractSocket::SocketError) {
                 m_connectTimer.stop();
                 emit connectionChanged(false, m_socket.errorString());
-                if(m_autoReconnect &&
-                   (m_socket.state() == QAbstractSocket::UnconnectedState))
-                {
-                    m_reconnectTimer.start();
-                }
+                scheduleAutomaticReconnect();
             });
 }
 
@@ -86,18 +83,63 @@ bool DspTcpClient::isConnected() const
 
 void DspTcpClient::connectToDevice(const QString &host, quint16 port)
 {
+    startConnection(host, port, true);
+}
+
+void DspTcpClient::reconnectToDevice(const QString &host, quint16 port)
+{
+    startConnection(host, port, false);
+}
+
+void DspTcpClient::startConnection(const QString &host, quint16 port,
+                                   bool resetReconnectLimit)
+{
+    if (!resetReconnectLimit && m_reconnectLimitReached) {
+        emit connectionProgress(
+            QStringLiteral("自动重连已停止，请手动点击“连接”后重试。"));
+        return;
+    }
+
+    m_autoReconnect = false;
+    m_reconnectTimer.stop();
+    m_connectTimer.stop();
+    m_socket.abort();
     m_rxBuffer.clear();
     clearPendingRequests();
     m_host = host;
     m_port = port;
+    if (resetReconnectLimit) {
+        m_automaticReconnectAttempts = 0;
+        m_reconnectLimitReached = false;
+    }
     m_autoReconnect = true;
-    m_socket.abort();
     emit connectionProgress(
         QStringLiteral("正在连接 DSP：%1:%2。")
             .arg(m_host)
             .arg(m_port));
     m_socket.connectToHost(m_host, m_port);
     m_connectTimer.start();
+}
+
+void DspTcpClient::scheduleAutomaticReconnect()
+{
+    if (!m_autoReconnect || isConnected() || m_host.isEmpty() ||
+        (m_socket.state() == QAbstractSocket::ConnectingState) ||
+        m_reconnectTimer.isActive()) {
+        return;
+    }
+
+    if (m_automaticReconnectAttempts >= MaxAutomaticReconnectAttempts) {
+        m_autoReconnect = false;
+        m_reconnectLimitReached = true;
+        m_reconnectTimer.stop();
+        emit connectionProgress(
+            QStringLiteral("自动重连已连续尝试%1次，现已停止。请检查网络后手动点击“连接”。")
+                .arg(MaxAutomaticReconnectAttempts));
+        return;
+    }
+
+    m_reconnectTimer.start();
 }
 
 void DspTcpClient::disconnectFromDevice()
@@ -131,11 +173,16 @@ void DspTcpClient::startHpdAuto(bool realAdcInput)
 
 void DspTcpClient::startSingle(quint16 testId,
                                DspTestProtocol::Stage stage,
-                               bool outputArmed)
+                               bool outputArmed,
+                               quint8 singleSelection)
 {
+    quint8 flags = outputArmed ? DspTestProtocol::FlagOutputArmed : 0U;
+    flags |= static_cast<quint8>(
+        (singleSelection << DspTestProtocol::FlagSingleSelectionShift) &
+        DspTestProtocol::FlagSingleSelectionMask);
     send(DspTestProtocol::Command::StartSingle,
          static_cast<quint8>(stage),
-         outputArmed ? DspTestProtocol::FlagOutputArmed : 0U,
+         flags,
          testId);
 }
 
@@ -175,6 +222,23 @@ void DspTcpClient::requestRecord(quint16 testId)
 void DspTcpClient::requestBoardInfo()
 {
     send(DspTestProtocol::Command::GetBoardInfo);
+}
+
+void DspTcpClient::requestTestAvailability(quint16 testId)
+{
+    send(DspTestProtocol::Command::GetTestAvailability, 0U, 0U, testId);
+}
+
+void DspTcpClient::configureAdcInjection(quint8 signalId,
+                                         quint16 expectedMillivolts,
+                                         quint16 toleranceMillivolts)
+{
+    send(DspTestProtocol::Command::ConfigureAdcInjection,
+         signalId,
+         static_cast<quint8>(
+             toleranceMillivolts /
+             DspTestProtocol::AdcToleranceStepMillivolts),
+         expectedMillivolts);
 }
 
 void DspTcpClient::send(DspTestProtocol::Command command,

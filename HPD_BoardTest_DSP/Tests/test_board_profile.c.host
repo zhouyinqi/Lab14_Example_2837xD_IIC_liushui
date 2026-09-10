@@ -1,0 +1,495 @@
+#include <assert.h>
+#include <stdio.h>
+
+#include "Board_Profile.h"
+
+static void AssertUnsupportedPair(BoardTest_U16 ethernetInterface,
+                                  BoardTest_U16 boardId)
+{
+    BoardProfile_Init(ethernetInterface);
+    assert(BoardProfile_Select(boardId) == BOARD_TEST_RESULT_NOT_SUPPORTED);
+    assert(gBoardProfileRuntimeStatus.selectedId == BOARD_PROFILE_ID_NONE);
+    assert(BoardProfile_GetCurrentHardware() == 0);
+}
+
+static void TestKnownHardwareMatrix(void)
+{
+    const BoardProfile_HardwareDescriptor *hardware;
+
+    BoardProfile_Init(BOARD_PROFILE_ETHERNET_EMIF_W5300);
+    assert(BoardProfile_Select(BOARD_PROFILE_ID_SYSTEM_MASTER) ==
+           BOARD_TEST_RESULT_PASS);
+    assert(BoardProfile_Confirm() == BOARD_TEST_RESULT_PASS);
+    hardware = BoardProfile_GetCurrentHardware();
+    assert(hardware != 0);
+    assert(hardware->boardId == BOARD_PROFILE_ID_SYSTEM_MASTER);
+    assert(hardware->ethernetInterface == BOARD_PROFILE_ETHERNET_EMIF_W5300);
+    assert(hardware->lowVoltagePins == 0);
+    assert(hardware->pins.canBTransmit == 12U);
+    assert(hardware->pins.canBReceive == 13U);
+    assert(hardware->pins.scibDirection == 11U);
+    assert(hardware->pins.scibTransmit == 14U);
+    assert(hardware->pins.scibReceive == 15U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_SPIB_INTERNAL) != 0U);
+    assert((BoardProfile_GetEffectiveCapabilities() &
+            BOARD_PROFILE_CAP_SPIB_FLASH_FRAM) == 0UL);
+    assert((BoardProfile_GetEffectiveCapabilities() &
+            BOARD_PROFILE_CAP_SPIB_FLASH) == 0UL);
+    assert((BoardProfile_GetEffectiveCapabilities() &
+            BOARD_PROFILE_CAP_SPIB_FRAM) == 0UL);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_SPI_EXTERNAL) != 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_SPIB_FLASH_EXTERNAL) == 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_SPIB_FRAM_EXTERNAL) == 0U);
+    assert(BoardProfile_GetTestAvailability(
+               BOARD_TEST_ID_SPI_EXTERNAL,
+               BOARD_TEST_CAP_IMPLEMENTED | BOARD_TEST_CAP_TEST_BENCH) ==
+           BOARD_PROFILE_TEST_TESTABLE);
+    assert(BoardProfile_GetTestAvailability(
+               BOARD_TEST_ID_SPIB_FLASH_EXTERNAL,
+               BOARD_TEST_CAP_IMPLEMENTED | BOARD_TEST_CAP_TEST_BENCH) ==
+           BOARD_PROFILE_TEST_NOT_AVAILABLE);
+    assert(BoardProfile_GetTestAvailability(
+               BOARD_TEST_ID_SPIB_FRAM_EXTERNAL,
+               BOARD_TEST_CAP_IMPLEMENTED | BOARD_TEST_CAP_TEST_BENCH) ==
+           BOARD_PROFILE_TEST_NOT_AVAILABLE);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_ETHERNET_SOCKET) != 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_ETHERNET_TCP_LINK) != 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_ETHERNET_TCP_ECHO) != 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_ETHERNET_TCP_STABILITY) != 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_ADC_EXTERNAL_INJECTION) == 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_ADC_EXTERNAL_GROUP_1) == 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_ADC_EXTERNAL_GROUP_2) == 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_ADC_PT100_MUX_EXTERNAL) == 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_PWM_BASIC) != 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_PWM_DIDO_EXTERNAL) == 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_DRIVER_FAULT_DI_EXTERNAL) == 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_PROTECTION_FAULT_DI_EXTERNAL) == 0U);
+    assert(BoardProfile_GetTestAvailability(
+               BOARD_TEST_ID_LV_DI_EXTERNAL, 0U) ==
+           BOARD_PROFILE_TEST_NOT_AVAILABLE);
+
+    BoardProfile_Clear();
+    assert(BoardProfile_Select(BOARD_PROFILE_ID_LOW_VOLTAGE_INVERTER) ==
+           BOARD_TEST_RESULT_PASS);
+    assert(BoardProfile_Confirm() == BOARD_TEST_RESULT_PASS);
+    hardware = BoardProfile_GetCurrentHardware();
+    assert(hardware != 0);
+    assert(hardware->hardwareRevision ==
+           BOARD_PROFILE_HARDWARE_REVISION_LOW_VOLTAGE_V04);
+    assert(hardware->pinMapRevision == 4U);
+    assert(hardware->pins.ethernetInterrupt == 0U);
+    assert(hardware->pins.ethernetReset == 1U);
+    assert(hardware->pins.canBTransmit == 6U);
+    assert(hardware->pins.canBReceive == 7U);
+    assert(hardware->pins.canBTransmitMux == 6U);
+    assert(hardware->pins.canBReceiveMux == 6U);
+    assert(hardware->pins.scibDirection == 32U);
+    assert(hardware->pins.scibTransmit == 10U);
+    assert(hardware->pins.scibReceive == 11U);
+    assert(hardware->pins.scibTransmitMux == 6U);
+    assert(hardware->pins.scibReceiveMux == 6U);
+    assert(hardware->pins.led1 == 3U);
+    assert(hardware->pins.led2 == 4U);
+    assert(hardware->pins.spibSimo == 63U);
+    assert(hardware->pins.spibSomi == 64U);
+    assert(hardware->pins.spibClock == 65U);
+    assert(hardware->pins.spibFlashChipSelect == 66U);
+    assert(hardware->pins.spibFramChipSelect == 33U);
+    assert(hardware->pins.spibMux == 15U);
+    assert(hardware->lowVoltagePins != 0);
+    assert(hardware->lowVoltagePins->adcInputs[
+               BOARD_PROFILE_LOW_VOLTAGE_ADC_IA].module ==
+           BOARD_PROFILE_ADC_MODULE_D);
+    assert(hardware->lowVoltagePins->adcInputs[
+               BOARD_PROFILE_LOW_VOLTAGE_ADC_IA].channel == 0U);
+    assert(hardware->lowVoltagePins->adcInputs[
+               BOARD_PROFILE_LOW_VOLTAGE_ADC_IC].module ==
+           BOARD_PROFILE_ADC_MODULE_A);
+    assert(hardware->lowVoltagePins->adcInputs[
+               BOARD_PROFILE_LOW_VOLTAGE_ADC_IC].channel == 15U);
+    assert(hardware->lowVoltagePins->adcInputs[
+               BOARD_PROFILE_LOW_VOLTAGE_ADC_AI2].module ==
+           BOARD_PROFILE_ADC_MODULE_D);
+    assert(hardware->lowVoltagePins->adcInputs[
+               BOARD_PROFILE_LOW_VOLTAGE_ADC_AI2].channel == 1U);
+    assert(hardware->lowVoltagePins->stoInputs[0] == 35U);
+    assert(hardware->lowVoltagePins->stoInputs[1] == 36U);
+    assert(hardware->lowVoltagePins->digitalInputs[0] == 86U);
+    assert(hardware->lowVoltagePins->digitalInputs[5] == 2U);
+    assert(hardware->lowVoltagePins->digitalOutputs[0] == 57U);
+    assert(hardware->lowVoltagePins->digitalOutputs[2] == 54U);
+    assert(hardware->lowVoltagePins->highCurrentOutput == 12U);
+    assert(hardware->lowVoltagePins->softStartOutput == 62U);
+    assert(hardware->lowVoltagePins->fanOutput == 49U);
+    assert(hardware->lowVoltagePins->pwmSoftwareLock == 91U);
+    assert(hardware->lowVoltagePins->pwmOutputs[0] == 18U);
+    assert(hardware->lowVoltagePins->pwmOutputs[5] == 23U);
+    assert(hardware->lowVoltagePins->faultInputs[0] == 14U);
+    assert(hardware->lowVoltagePins->faultInputs[3] == 17U);
+    assert(hardware->lowVoltagePins->faultActiveLevels[0] ==
+           BOARD_PROFILE_SIGNAL_ACTIVE_LOW);
+    assert(hardware->lowVoltagePins->faultActiveLevels[2] ==
+           BOARD_PROFILE_SIGNAL_TOGGLE);
+    assert(hardware->lowVoltagePins->faultActiveLevels[3] ==
+           BOARD_PROFILE_SIGNAL_ACTIVE_HIGH);
+    assert(hardware->lowVoltagePins->protectionBreakInput == 94U);
+    assert(hardware->lowVoltagePins->faultClearOutput == 93U);
+    assert(hardware->lowVoltagePins->analogOutput == 5U);
+    assert(hardware->lowVoltagePins->resolverAbz[0] == 24U);
+    assert(hardware->lowVoltagePins->resolverAbz[2] == 26U);
+    assert(hardware->lowVoltagePins->resolverResolution[0] == 99U);
+    assert(hardware->lowVoltagePins->resolverMode == 29U);
+    assert(hardware->lowVoltagePins->resolverSpi[0] == 50U);
+    assert(hardware->lowVoltagePins->resolverSpi[3] == 53U);
+    assert(hardware->lowVoltagePins->resolverFaultInputs[0] == 90U);
+    assert(hardware->lowVoltagePins->resolverFaultInputs[1] == 133U);
+    assert(hardware->lowVoltagePins->rtcSda == 42U);
+    assert(hardware->lowVoltagePins->rtcScl == 43U);
+    assert(hardware->lowVoltagePins->rtcInterrupt == 67U);
+    assert((BoardProfile_GetEffectiveCapabilities() &
+            BOARD_PROFILE_CAP_STO) != 0UL);
+    assert((BoardProfile_GetEffectiveCapabilities() &
+            BOARD_PROFILE_CAP_ANALOG_OUTPUT) != 0UL);
+    assert((BoardProfile_GetEffectiveCapabilities() &
+            BOARD_PROFILE_CAP_RESOLVER) != 0UL);
+    assert((BoardProfile_GetEffectiveCapabilities() &
+            BOARD_PROFILE_CAP_PROTECTION_IO) != 0UL);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_GPIO) != 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_CAN_EXTERNAL) != 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_SCI_RS485_EXTERNAL) != 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_SPIA_INTERNAL) != 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_SPIB_INTERNAL) != 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_SPIB_FLASH_EXTERNAL) != 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_SPIB_FRAM_EXTERNAL) != 0U);
+    assert(BoardProfile_GetTestAvailability(
+               BOARD_TEST_ID_SPIB_FLASH_EXTERNAL,
+               BOARD_TEST_CAP_IMPLEMENTED | BOARD_TEST_CAP_TEST_BENCH) ==
+           BOARD_PROFILE_TEST_PENDING_VALIDATION);
+    assert(BoardProfile_GetTestAvailability(
+               BOARD_TEST_ID_SPIB_FRAM_EXTERNAL,
+               BOARD_TEST_CAP_IMPLEMENTED | BOARD_TEST_CAP_TEST_BENCH) ==
+           BOARD_PROFILE_TEST_PENDING_VALIDATION);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_ADC_EXTERNAL_INJECTION) == 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_ADC_EXTERNAL_GROUP_1) == 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_ADC_EXTERNAL_GROUP_2) == 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_ADC_PT100_MUX_EXTERNAL) == 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_DRIVER_FAULT_DI_EXTERNAL) == 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_PROTECTION_FAULT_DI_EXTERNAL) == 0U);
+    assert(BoardProfile_GetTestAvailability(
+               BOARD_TEST_ID_LV_DI_EXTERNAL, 0U) ==
+           BOARD_PROFILE_TEST_PENDING_DEVELOPMENT);
+    assert(BoardProfile_GetTestAvailability(
+               BOARD_TEST_ID_LV_DO_EXTERNAL, 0U) ==
+           BOARD_PROFILE_TEST_PENDING_DEVELOPMENT);
+    assert(BoardProfile_GetTestAvailability(
+               BOARD_TEST_ID_LV_HDO_EXTERNAL, 0U) ==
+           BOARD_PROFILE_TEST_PENDING_DEVELOPMENT);
+    assert(BoardProfile_GetTestAvailability(
+               BOARD_TEST_ID_LV_STO_EXTERNAL, 0U) ==
+           BOARD_PROFILE_TEST_PENDING_DEVELOPMENT);
+    assert(BoardProfile_GetTestAvailability(
+               BOARD_TEST_ID_LV_ADC_EXTERNAL, 0U) ==
+           BOARD_PROFILE_TEST_PENDING_DEVELOPMENT);
+    assert(BoardProfile_GetTestAvailability(
+               BOARD_TEST_ID_LV_PT100_EXTERNAL, 0U) ==
+           BOARD_PROFILE_TEST_PENDING_DEVELOPMENT);
+    assert(BoardProfile_GetTestAvailability(
+               BOARD_TEST_ID_LV_NTC_EXTERNAL, 0U) ==
+           BOARD_PROFILE_TEST_PENDING_DEVELOPMENT);
+    assert(BoardProfile_GetTestAvailability(
+               BOARD_TEST_ID_LV_PWM_EXTERNAL, 0U) ==
+           BOARD_PROFILE_TEST_PENDING_DEVELOPMENT);
+    assert(BoardProfile_GetTestAvailability(
+               BOARD_TEST_ID_LV_PROTECTION_EXTERNAL, 0U) ==
+           BOARD_PROFILE_TEST_PENDING_DEVELOPMENT);
+    assert(BoardProfile_GetTestAvailability(
+               BOARD_TEST_ID_LV_AO_EXTERNAL, 0U) ==
+           BOARD_PROFILE_TEST_PENDING_DEVELOPMENT);
+    assert(BoardProfile_GetTestAvailability(
+               BOARD_TEST_ID_LV_RESOLVER_EXTERNAL, 0U) ==
+           BOARD_PROFILE_TEST_PENDING_DEVELOPMENT);
+    assert(BoardProfile_GetTestAvailability(
+               BOARD_TEST_ID_DIDO_FPGA_DO_EXTERNAL,
+               BOARD_TEST_CAP_IMPLEMENTED | BOARD_TEST_CAP_TEST_BENCH) ==
+           BOARD_PROFILE_TEST_NOT_AVAILABLE);
+    assert(BoardProfile_GetTestAvailability(
+               BOARD_TEST_ID_DI_FPGA_EXTERNAL,
+               BOARD_TEST_CAP_IMPLEMENTED | BOARD_TEST_CAP_TEST_BENCH) ==
+           BOARD_PROFILE_TEST_NOT_AVAILABLE);
+
+    BoardProfile_Init(BOARD_PROFILE_ETHERNET_SPIC_W5500);
+    assert(BoardProfile_Select(BOARD_PROFILE_ID_LOW_ALTITUDE_UNIFIED) ==
+           BOARD_TEST_RESULT_PASS);
+    assert(BoardProfile_Confirm() == BOARD_TEST_RESULT_PASS);
+    hardware = BoardProfile_GetCurrentHardware();
+    assert(hardware != 0);
+    assert(hardware->hardwareRevision ==
+           BOARD_PROFILE_HARDWARE_REVISION_LOW_ALTITUDE_V01);
+    assert(hardware->pinMapRevision == 1U);
+    assert(hardware->lowVoltagePins == 0);
+    assert(hardware->pins.ethernetInterrupt == 73U);
+    assert(hardware->pins.ethernetReset == 68U);
+    assert(hardware->pins.ethernetSimo == 69U);
+    assert(hardware->pins.ethernetSomi == 70U);
+    assert(hardware->pins.ethernetClock == 71U);
+    assert(hardware->pins.ethernetChipSelect == 72U);
+    assert(hardware->pins.canBTransmit == 6U);
+    assert(hardware->pins.canBReceive == 7U);
+    assert(hardware->pins.led1 == 47U);
+    assert(hardware->pins.led2 == 46U);
+    assert(hardware->pins.rs422Transmit == 38U);
+    assert(hardware->pins.rs422Receive == 39U);
+    assert(hardware->pins.rs422TransmitMux == 5U);
+    assert(hardware->pins.rs422ReceiveMux == 5U);
+    assert(hardware->pins.pt100Select0 == 24U);
+    assert(hardware->pins.pt100Select1 == 25U);
+    assert(hardware->pins.ntcFaultSelect0 == 93U);
+    assert(hardware->pins.ntcFaultSelect1 == 92U);
+    assert(hardware->pins.ntcFaultSelect2 == 91U);
+    assert(hardware->pins.dspDi1 == 42U);
+    assert(hardware->pins.dspDi2 == 89U);
+    assert(hardware->pins.dspDi3 == 90U);
+    assert(hardware->pins.dspDo1 == 43U);
+    assert(hardware->pins.dspDo2 == 67U);
+    assert(hardware->pins.dspDo3 == 88U);
+    assert(hardware->pins.pwmDidoOutputs[0] == 16U);
+    assert(hardware->pins.pwmDidoOutputs[1] == 17U);
+    assert(hardware->pins.pwmDidoOutputs[2] == 14U);
+    assert(hardware->pins.pwmDidoOutputs[3] == 15U);
+    assert(hardware->pins.pwmDidoOutputs[4] == 12U);
+    assert(hardware->pins.pwmDidoOutputs[5] == 13U);
+    assert(hardware->pins.pwmDidoOutputs[6] == 22U);
+    assert(hardware->pins.pwmDidoOutputs[7] == 23U);
+    assert(hardware->pins.pwmDidoOutputs[8] == 20U);
+    assert(hardware->pins.pwmDidoOutputs[9] == 21U);
+    assert(hardware->pins.pwmDidoOutputs[10] == 18U);
+    assert(hardware->pins.pwmDidoOutputs[11] == 19U);
+    assert(hardware->pins.pwmDidoEnables[0] == 0U);
+    assert(hardware->pins.pwmDidoEnables[1] == 1U);
+    assert(hardware->pins.pwmDidoEnables[2] == 86U);
+    assert(hardware->pins.pwmDidoEnables[3] == 87U);
+    assert(hardware->pins.pwmDidoPowerEnables[0] == 2U);
+    assert(hardware->pins.pwmDidoPowerEnables[1] == 3U);
+    assert(hardware->pins.pwmDidoPowerEnables[2] == 4U);
+    assert(hardware->pins.pwmDidoPowerEnables[3] == 5U);
+    assert(hardware->pins.driverFaultInputs[0] == 10U);
+    assert(hardware->pins.driverFaultInputs[1] == 26U);
+    assert(hardware->pins.driverFaultInputs[2] == 74U);
+    assert(hardware->pins.driverFaultInputs[3] == 75U);
+    assert(hardware->pins.protectionFaultInputs[0] == 77U);
+    assert(hardware->pins.protectionFaultInputs[1] == 76U);
+    assert(hardware->pins.protectionFaultInputs[2] == 82U);
+    assert(hardware->pins.protectionFaultInputs[3] == 83U);
+    assert(hardware->pins.driverResetOutputs[0] == 80U);
+    assert(hardware->pins.driverResetOutputs[1] == 81U);
+    assert(hardware->pins.driverResetOutputs[2] == 78U);
+    assert(hardware->pins.driverResetOutputs[3] == 79U);
+    assert(hardware->pins.protectionBreakInput == 133U);
+    assert(hardware->pins.faultClearOutput == 11U);
+    assert(hardware->pins.sciaTransmit == BOARD_PROFILE_PIN_UNUSED);
+    assert(hardware->pins.scibTransmit == BOARD_PROFILE_PIN_UNUSED);
+    assert((BoardProfile_GetEffectiveCapabilities() &
+            BOARD_PROFILE_CAP_RS422) != 0UL);
+    assert((BoardProfile_GetImplementedCapabilities() &
+            BOARD_PROFILE_CAP_RS422) != 0UL);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_GPIO) != 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_ADC_BASIC) != 0U);
+    assert((BoardProfile_GetImplementedCapabilities() &
+            BOARD_PROFILE_CAP_ADC) != 0UL);
+    assert((BoardProfile_GetImplementedCapabilities() &
+            BOARD_PROFILE_CAP_DSP_DI) != 0UL);
+    assert((BoardProfile_GetImplementedCapabilities() &
+            BOARD_PROFILE_CAP_DSP_DO) != 0UL);
+    assert((BoardProfile_GetImplementedCapabilities() &
+            BOARD_PROFILE_CAP_PWM) != 0UL);
+    assert(BoardProfile_IsCapabilityValidated(BOARD_PROFILE_CAP_ADC) != 0U);
+    assert(BoardProfile_GetTestAvailability(
+               BOARD_TEST_ID_ADC_BASIC,
+               BOARD_TEST_CAP_IMPLEMENTED | BOARD_TEST_CAP_EXTERNAL_INJECT) ==
+           BOARD_PROFILE_TEST_TESTABLE);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_ADC_EXTERNAL_INJECTION) != 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_ADC_EXTERNAL_GROUP_1) != 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_ADC_EXTERNAL_GROUP_2) != 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_ADC_PT100_MUX_EXTERNAL) != 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_ADC_NTC_MUX_EXTERNAL) == 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_ADC_FAULT_MUX_EXTERNAL) == 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_DIDO_FPGA_DO_EXTERNAL) != 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_DI_FPGA_EXTERNAL) != 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_PWM_BASIC) == 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_PWM_DIDO_EXTERNAL) != 0U);
+    assert(BoardProfile_GetTestAvailability(
+               BOARD_TEST_ID_PWM_DIDO_EXTERNAL,
+               BOARD_TEST_CAP_IMPLEMENTED | BOARD_TEST_CAP_TEST_BENCH) ==
+           BOARD_PROFILE_TEST_PENDING_VALIDATION);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_DRIVER_FAULT_DI_EXTERNAL) != 0U);
+    assert(BoardProfile_GetTestAvailability(
+               BOARD_TEST_ID_DRIVER_FAULT_DI_EXTERNAL,
+               BOARD_TEST_CAP_IMPLEMENTED | BOARD_TEST_CAP_TEST_BENCH) ==
+           BOARD_PROFILE_TEST_PENDING_VALIDATION);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_PROTECTION_FAULT_DI_EXTERNAL) != 0U);
+    assert(BoardProfile_GetTestAvailability(
+               BOARD_TEST_ID_PROTECTION_FAULT_DI_EXTERNAL,
+               BOARD_TEST_CAP_IMPLEMENTED |
+               BOARD_TEST_CAP_EXTERNAL_INJECT |
+               BOARD_TEST_CAP_TEST_BENCH) ==
+           BOARD_PROFILE_TEST_PENDING_VALIDATION);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_DRIVER_RESET_DO_EXTERNAL) != 0U);
+    assert(BoardProfile_GetTestAvailability(
+               BOARD_TEST_ID_DRIVER_RESET_DO_EXTERNAL,
+               BOARD_TEST_CAP_IMPLEMENTED |
+               BOARD_TEST_CAP_TEST_BENCH) ==
+           BOARD_PROFILE_TEST_PENDING_VALIDATION);
+    assert(BoardProfile_GetTestAvailability(
+               BOARD_TEST_ID_DIDO_FPGA_DO_EXTERNAL,
+               BOARD_TEST_CAP_IMPLEMENTED | BOARD_TEST_CAP_TEST_BENCH) ==
+           BOARD_PROFILE_TEST_PENDING_VALIDATION);
+    assert(BoardProfile_GetTestAvailability(
+               BOARD_TEST_ID_DI_FPGA_EXTERNAL,
+               BOARD_TEST_CAP_IMPLEMENTED | BOARD_TEST_CAP_TEST_BENCH) ==
+           BOARD_PROFILE_TEST_PENDING_VALIDATION);
+    assert(BoardProfile_GetTestAvailability(
+               BOARD_TEST_ID_ADC_EXTERNAL_INJECTION,
+               BOARD_TEST_CAP_IMPLEMENTED |
+               BOARD_TEST_CAP_EXTERNAL_INJECT |
+               BOARD_TEST_CAP_TEST_BENCH) ==
+           BOARD_PROFILE_TEST_PENDING_VALIDATION);
+    assert(BoardProfile_GetTestAvailability(
+               BOARD_TEST_ID_ADC_EXTERNAL_GROUP_1,
+               BOARD_TEST_CAP_IMPLEMENTED |
+               BOARD_TEST_CAP_EXTERNAL_INJECT |
+               BOARD_TEST_CAP_TEST_BENCH) ==
+           BOARD_PROFILE_TEST_PENDING_VALIDATION);
+    assert(BoardProfile_GetTestAvailability(
+               BOARD_TEST_ID_ADC_EXTERNAL_GROUP_2,
+               BOARD_TEST_CAP_IMPLEMENTED |
+               BOARD_TEST_CAP_EXTERNAL_INJECT |
+               BOARD_TEST_CAP_TEST_BENCH) ==
+           BOARD_PROFILE_TEST_PENDING_VALIDATION);
+    assert(BoardProfile_GetTestAvailability(
+               BOARD_TEST_ID_ADC_PT100_MUX_EXTERNAL,
+               BOARD_TEST_CAP_IMPLEMENTED |
+               BOARD_TEST_CAP_EXTERNAL_INJECT |
+               BOARD_TEST_CAP_TEST_BENCH) ==
+           BOARD_PROFILE_TEST_PENDING_VALIDATION);
+    assert(BoardProfile_GetTestAvailability(
+               BOARD_TEST_ID_SPIB_FLASH_EXTERNAL,
+               BOARD_TEST_CAP_IMPLEMENTED | BOARD_TEST_CAP_TEST_BENCH) ==
+           BOARD_PROFILE_TEST_PENDING_VALIDATION);
+    assert(BoardProfile_GetTestAvailability(
+               BOARD_TEST_ID_I2C_EXTERNAL,
+               BOARD_TEST_CAP_TEST_BENCH) ==
+           BOARD_PROFILE_TEST_NOT_AVAILABLE);
+    assert(BoardProfile_GetTestAvailability(
+               BOARD_TEST_ID_SYS_INTERRUPT,
+               0U) == BOARD_PROFILE_TEST_PENDING_DEVELOPMENT);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_ETHERNET) != 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_ETHERNET_SOCKET) != 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_ETHERNET_TCP_LINK) != 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_ETHERNET_TCP_ECHO) != 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_ETHERNET_TCP_STABILITY) != 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_CAN_EXTERNAL) != 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_SCI_HOST) == 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_SCI_RS485_EXTERNAL) == 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_RS422_EXTERNAL) != 0U);
+    assert(BoardProfile_IsCapabilityValidated(BOARD_PROFILE_CAP_RS422) != 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_SCIA_HANDHELD_EXTERNAL) == 0U);
+    assert((BoardProfile_GetEffectiveCapabilities() &
+            BOARD_PROFILE_CAP_SPIB) != 0UL);
+    assert((BoardProfile_GetImplementedCapabilities() &
+            BOARD_PROFILE_CAP_SPIB) != 0UL);
+    assert((BoardProfile_GetImplementedCapabilities() &
+            BOARD_PROFILE_CAP_SPIB_FLASH_FRAM) == 0UL);
+    assert((BoardProfile_GetImplementedCapabilities() &
+            BOARD_PROFILE_CAP_SPIB_FLASH) != 0UL);
+    assert((BoardProfile_GetImplementedCapabilities() &
+            BOARD_PROFILE_CAP_SPIB_FRAM) != 0UL);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_SPIB_INTERNAL) != 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_SPIB_FLASH_EXTERNAL) != 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_SPIB_FRAM_EXTERNAL) != 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_SPIC_INTERNAL) == 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_SPI_EXTERNAL) == 0U);
+    assert(BoardProfile_GetTestAvailability(
+               BOARD_TEST_ID_LV_DI_EXTERNAL, 0U) ==
+           BOARD_PROFILE_TEST_NOT_AVAILABLE);
+    assert(BoardProfile_IsCapabilityValidated(BOARD_PROFILE_CAP_SPIB) != 0U);
+    assert(BoardProfile_IsCapabilityValidated(
+               BOARD_PROFILE_CAP_SPIB_FLASH) == 0U);
+    assert(BoardProfile_IsCapabilityValidated(
+               BOARD_PROFILE_CAP_SPIB_FRAM) != 0U);
+    assert(hardware->pins.spibSimo == 63U);
+    assert(hardware->pins.spibSomi == 64U);
+    assert(hardware->pins.spibClock == 65U);
+    assert(hardware->pins.spibFlashChipSelect == 66U);
+    assert(hardware->pins.spibFramChipSelect == 62U);
+    assert(hardware->pins.spibMux == 15U);
+    assert((hardware->validatedCapabilities &
+            ~hardware->implementedCapabilities) == 0UL);
+}
+
+static void TestUnknownHardwarePairsAreRejected(void)
+{
+    AssertUnsupportedPair(BOARD_PROFILE_ETHERNET_EMIF_W5300,
+                          BOARD_PROFILE_ID_LOW_ALTITUDE_UNIFIED);
+    AssertUnsupportedPair(BOARD_PROFILE_ETHERNET_SPIC_W5500,
+                          BOARD_PROFILE_ID_SYSTEM_MASTER);
+    AssertUnsupportedPair(BOARD_PROFILE_ETHERNET_SPIC_W5500,
+                          BOARD_PROFILE_ID_LOW_VOLTAGE_INVERTER);
+
+    assert(BoardProfile_GetHardwareDescriptor(
+               BOARD_PROFILE_ID_LOW_ALTITUDE_UNIFIED,
+               BOARD_PROFILE_HARDWARE_REVISION_LOW_ALTITUDE_V01,
+               BOARD_PROFILE_ETHERNET_EMIF_W5300) == 0);
+    assert(BoardProfile_GetHardwareDescriptor(
+               BOARD_PROFILE_ID_LOW_VOLTAGE_INVERTER,
+               BOARD_PROFILE_HARDWARE_REVISION_LOW_VOLTAGE_V04,
+               BOARD_PROFILE_ETHERNET_SPIC_W5500) == 0);
+}
+
+int main(void)
+{
+    TestKnownHardwareMatrix();
+    TestUnknownHardwarePairsAreRejected();
+    puts("board_profile: known hardware matrix test passed");
+    return 0;
+}

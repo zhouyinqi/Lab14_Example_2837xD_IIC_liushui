@@ -133,6 +133,14 @@ bool parseResponse(const QByteArray &frame, Response *response, QString *error)
         response->boardProfileState = static_cast<BoardProfileState>(
             static_cast<quint16>(response->expectedMax));
     }
+    if (response->command == Command::GetTestAvailability) {
+        response->testAvailability = static_cast<TestAvailability>(
+            readU16(frame, 18));
+        response->testDescriptorCapabilities = response->recordErrorCode;
+        response->testStageMask = static_cast<quint16>(response->rawValue >> 16U);
+        response->testRisk = static_cast<quint16>(response->rawValue & 0xFFFFU);
+        response->testEnabledInAuto = response->measuredValue != 0.0F;
+    }
     return true;
 }
 
@@ -167,6 +175,22 @@ QString protocolStatusText(ProtocolStatus status)
     }
 
     return QStringLiteral("未知协议状态");
+}
+
+QString testAvailabilityText(TestAvailability availability)
+{
+    switch (availability) {
+    case TestAvailability::NotAvailable:
+        return QStringLiteral("不具备");
+    case TestAvailability::PendingDevelopment:
+        return QStringLiteral("待开发");
+    case TestAvailability::PendingValidation:
+        return QStringLiteral("待验证");
+    case TestAvailability::Testable:
+        return QStringLiteral("可测试");
+    }
+
+    return QStringLiteral("未知状态");
 }
 
 } // namespace DspTestProtocol

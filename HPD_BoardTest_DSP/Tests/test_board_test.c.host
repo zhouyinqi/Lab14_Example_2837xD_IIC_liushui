@@ -1,0 +1,2496 @@
+#include <assert.h>
+#include <stdio.h>
+
+#include "Board_Adc_Test.h"
+#include "Board_Can_Test.h"
+#include "Board_Dido_Test.h"
+#include "Board_Di_Test.h"
+#include "Board_Emif_Test.h"
+#include "Board_Ethernet_Test.h"
+#include "Board_W5500_Test.h"
+#include "Board_Fpga_Test.h"
+#include "Board_Gpio_Test.h"
+#include "Board_Hdo_Test.h"
+#include "Board_I2c_Test.h"
+#include "Board_Sci_Test.h"
+#include "Board_Spi_Test.h"
+#include "Board_Pwm_Test.h"
+#include "Board_System_Test.h"
+#include "Board_Test.h"
+#include "Board_Pinmap.h"
+#include "Board_Profile.h"
+#include "Hpd_Test_Limits.h"
+
+static BoardTest_Result TestExecutor(BoardTest_U16 testId,
+                                     BoardTest_Record *record)
+{
+    if(testId == BOARD_TEST_ID_SYS_STARTUP)
+    {
+        record->measuredValue = 1.0F;
+        return BOARD_TEST_RESULT_PASS;
+    }
+
+    if(testId == BOARD_TEST_ID_I2C_RTC)
+    {
+        record->rawValue = 0UL;
+        return BOARD_TEST_RESULT_PASS;
+    }
+
+    if(testId == BOARD_TEST_ID_I2C_B_TMP116)
+    {
+        return BoardI2c_EvaluateTmp116Read(BOARD_I2C_STATUS_SUCCESS,
+                                           BOARD_I2C_TMP116_ADDR_MIN,
+                                           BOARD_I2C_TMP116_DEVICE_ID,
+                                           0x1900U,
+                                           record);
+    }
+
+    if(testId == BOARD_TEST_ID_SCI_HOST)
+    {
+        return BoardSci_EvaluateLoopbackStatus(
+            (BoardTest_U16)BOARD_SCI_LOOPBACK_EXPECTED_MASK,
+            BOARD_SCI_LOOPBACK_SCIA_PATTERN,
+            BOARD_SCI_LOOPBACK_SCIB_PATTERN,
+            record);
+    }
+
+    if(testId == BOARD_TEST_ID_SCI_RS485_EXTERNAL)
+    {
+        return BoardSci_EvaluateRs485ExternalStatus(
+            (BoardTest_U16)BOARD_SCI_RS485_EXTERNAL_REQUIRED_MASK,
+            BOARD_SCI_RS485_EXTERNAL_REQUEST,
+            BOARD_SCI_RS485_EXTERNAL_RESPONSE,
+            record);
+    }
+
+    if(testId == BOARD_TEST_ID_RS422_EXTERNAL)
+    {
+        return BoardSci_EvaluateRs422ExternalStatus(
+            (BoardTest_U16)BOARD_SCI_RS422_EXTERNAL_REQUIRED_MASK,
+            BOARD_SCI_RS422_EXTERNAL_REQUEST,
+            BOARD_SCI_RS422_EXTERNAL_RESPONSE,
+            record);
+    }
+
+    if(testId == BOARD_TEST_ID_SCIA_HANDHELD_EXTERNAL)
+    {
+        return BoardSci_EvaluateSciaHandheldExternalStatus(
+            (BoardTest_U16)BOARD_SCI_HANDHELD_EXTERNAL_DIAGNOSTIC_MASK,
+            BOARD_SCI_HANDHELD_EXTERNAL_REQUEST,
+            BOARD_SCI_HANDHELD_EXTERNAL_RESPONSE,
+            record);
+    }
+
+    if(testId == BOARD_TEST_ID_CAN_HOST)
+    {
+        return BoardCan_EvaluateLoopbackStatus(
+            (BoardTest_U16)BOARD_CAN_LOOPBACK_EXPECTED_MASK,
+            BOARD_CAN_LOOPBACK_TX_PATTERN,
+            BOARD_CAN_LOOPBACK_TX_PATTERN,
+            0U,
+            record);
+    }
+
+    if(testId == BOARD_TEST_ID_CAN_EXTERNAL)
+    {
+        return BoardCan_EvaluateExternalStatus(
+            (BoardTest_U16)BOARD_CAN_EXTERNAL_EXPECTED_MASK,
+            BOARD_CAN_EXTERNAL_REQUEST_ID,
+            BOARD_CAN_EXTERNAL_DATA_BYTES,
+            BOARD_CAN_EXTERNAL_REQUEST_PATTERN,
+            BOARD_CAN_EXTERNAL_RESPONSE_ID,
+            BOARD_CAN_EXTERNAL_REQUEST_PATTERN,
+            0U,
+            record);
+    }
+
+    if(testId == BOARD_TEST_ID_ADC_BASIC)
+    {
+        return BoardAdc_EvaluateBasicSample(
+            BOARD_ADC_BASIC_STATUS_REQUIRED_MASK,
+            2048U,
+            record);
+    }
+
+    if(testId == BOARD_TEST_ID_ADC_EXTERNAL_INJECTION)
+    {
+        return BoardAdc_EvaluateExternalInjection(
+            BOARD_ADC_BASIC_STATUS_REQUIRED_MASK,
+            2048U,
+            2.5F,
+            0.1F,
+            record);
+    }
+
+    if((testId == BOARD_TEST_ID_ADC_EXTERNAL_GROUP_1) ||
+       (testId == BOARD_TEST_ID_ADC_EXTERNAL_GROUP_2))
+    {
+        return BoardAdc_EvaluateExternalInjectionGroup(
+            (testId == BOARD_TEST_ID_ADC_EXTERNAL_GROUP_1) ?
+                BOARD_ADC_EXTERNAL_SELECTION_GROUP_1 :
+                BOARD_ADC_EXTERNAL_SELECTION_GROUP_2,
+            BOARD_ADC_EXTERNAL_GROUP_REQUIRED_MASK,
+            0U,
+            BOARD_ADC_EXTERNAL_GROUP_CHANNEL_COUNT,
+            record);
+    }
+
+    if(testId == BOARD_TEST_ID_PWM_BASIC)
+    {
+        return BoardPwm_EvaluateSafetyStatus(
+            BOARD_PWM_SAFE_REQUIRED_MASK,
+            BOARD_EPWM_PAIR_COUNT,
+            0U,
+            record);
+    }
+
+    if(testId == BOARD_TEST_ID_PWM_DIDO_EXTERNAL)
+    {
+        return BoardPwm_EvaluateDidoStatus(
+            BOARD_PWM_DIDO_REQUIRED_MASK,
+            BOARD_PWM_DIDO_FAIL_NONE,
+            BOARD_PWM_DIDO_OUTPUT_MASK,
+            BOARD_PWM_DIDO_OUTPUT_MASK,
+            record);
+    }
+
+    if(testId == BOARD_TEST_ID_DRIVER_FAULT_DI_EXTERNAL)
+    {
+        return BoardDi_EvaluateDriverFaultStatus(
+            BOARD_DI_DSP_REQUIRED_STATUS_MASK,
+            BOARD_DI_FAIL_NONE,
+            BOARD_DI_DRIVER_FAULT_DEFAULT_CHANNEL_MASK,
+            BOARD_DI_DRIVER_FAULT_INPUT_MASK,
+            BOARD_DI_DRIVER_FAULT_INPUT_MASK,
+            BOARD_DI_DRIVER_FAULT_INPUT_MASK,
+            record);
+    }
+
+    if(testId == BOARD_TEST_ID_PROTECTION_FAULT_DI_EXTERNAL)
+    {
+        return BoardAdc_EvaluateProtectionThreshold(
+            BOARD_ADC_PROTECTION_REQUIRED_STATUS_MASK,
+            BOARD_ADC_PROTECTION_FAIL_NONE,
+            BOARD_ADC_PROTECTION_SELECTION_OC_HIGH_BASE,
+            BOARD_DI_PROTECTION_OC1_BIT,
+            BOARD_DI_PROTECTION_FAULT_INPUT_MASK,
+            4.9F,
+            record);
+    }
+
+    if(testId == BOARD_TEST_ID_DRIVER_RESET_DO_EXTERNAL)
+    {
+        return BoardDido_EvaluateDriverResetStatus(
+            BOARD_DRIVER_RESET_REQUIRED_STATUS,
+            BOARD_DIDO_FAIL_NONE,
+            BOARD_DRIVER_RESET_CHANNEL_URST1,
+            record);
+    }
+
+    if(testId == BOARD_TEST_ID_EMIF_BASIC)
+    {
+        return BoardEmif_EvaluateBasicStatus(
+            BOARD_EMIF_BASIC_REQUIRED_MASK,
+            BOARD_EMIF_ASYNC_REQUIRED_MASK,
+            BOARD_EMIF_ASYNC_REQUIRED_MASK,
+            record);
+    }
+
+    if(testId == BOARD_TEST_ID_EMIF_EXTERNAL)
+    {
+        return BoardEmif_EvaluateSramStatus(
+            BOARD_EMIF_SRAM_REQUIRED_MASK,
+            BOARD_EMIF_SRAM_FAIL_NONE,
+            0xA5A5U,
+            0xA5A5U,
+            record);
+    }
+
+    if(testId == BOARD_TEST_ID_FPGA_EMIF2_BASIC)
+    {
+        return BoardFpga_EvaluateEmif2Status(
+            BOARD_FPGA_EMIF2_REQUIRED_MASK,
+            BOARD_FPGA_FAIL_NONE,
+            BOARD_FPGA_TEST1_EXPECTED,
+            BOARD_FPGA_TEST2_EXPECTED,
+            BOARD_FPGA_TEST3_EXPECTED,
+            record);
+    }
+
+    if(testId == BOARD_TEST_ID_DIDO_FPGA_DO_EXTERNAL)
+    {
+        return BoardDido_EvaluateFpgaDoStatus(
+            BOARD_DIDO_STATUS_CONFIGURED |
+            BOARD_DIDO_STATUS_MAGIC_VALID |
+            BOARD_DIDO_STATUS_CHANNEL_1_TOGGLED |
+            BOARD_DIDO_STATUS_CHANNEL_2_TOGGLED |
+            BOARD_DIDO_STATUS_CHANNEL_3_TOGGLED |
+            BOARD_DIDO_STATUS_OUTPUTS_DISABLED,
+            BOARD_DIDO_FAIL_NONE,
+            BOARD_DIDO_DEFAULT_CHANNEL_MASK,
+            record);
+    }
+
+    if(testId == BOARD_TEST_ID_HDO_FPGA_EXTERNAL)
+    {
+        return BoardHdo_EvaluateFpgaStatus(
+            BOARD_HDO_STATUS_CONFIGURED |
+            BOARD_HDO_STATUS_MAGIC_VALID |
+            BOARD_HDO_STATUS_CHANNEL_1_TOGGLED |
+            BOARD_HDO_STATUS_CHANNEL_2_TOGGLED |
+            BOARD_HDO_STATUS_OUTPUTS_DISABLED,
+            BOARD_HDO_FAIL_NONE,
+            BOARD_HDO_DEFAULT_CHANNEL_MASK,
+            record);
+    }
+
+    if(testId == BOARD_TEST_ID_DI_FPGA_EXTERNAL)
+    {
+        return BoardDi_EvaluateFpgaStatus(
+            BOARD_DI_REQUIRED_STATUS_MASK,
+            BOARD_DI_FAIL_NONE,
+            BOARD_DI_DEFAULT_CHANNEL_MASK,
+            BOARD_DI_INPUT_MASK,
+            BOARD_DI_INPUT_MASK,
+            BOARD_DI_INPUT_MASK,
+            record);
+    }
+
+    if(testId == BOARD_TEST_ID_ETHERNET)
+    {
+        return BoardEthernet_EvaluateW5300BasicStatus(
+            BOARD_ETHERNET_W5300_REQUIRED_MASK,
+            BOARD_ETHERNET_W5300_MODE_EXPECTED,
+            BOARD_ETHERNET_W5300_RTR_EXPECTED,
+            BOARD_ETHERNET_W5300_RCR_EXPECTED,
+            BOARD_ETHERNET_W5300_MEM_EXPECTED,
+            BOARD_ETHERNET_W5300_MEM_EXPECTED,
+            0x0000U,
+            record);
+    }
+
+    if(testId == BOARD_TEST_ID_ETHERNET_SOCKET)
+    {
+        return BoardEthernet_EvaluateW5300SocketStatus(
+            BOARD_ETHERNET_SOCKET_REQUIRED_MASK,
+            0x0021U,
+            12001U,
+            0x1300U,
+            0x1400U,
+            0x0000U,
+            record);
+    }
+
+    if(testId == BOARD_TEST_ID_ETHERNET_TCP_LINK)
+    {
+        return BoardEthernet_EvaluateW5300TcpLinkStatus(
+            BOARD_ETHERNET_TCP_LINK_REQUIRED_MASK,
+            0x1400U,
+            0x1701U,
+            0x0000U,
+            49152U,
+            record);
+    }
+
+    if(testId == BOARD_TEST_ID_ETHERNET_TCP_ECHO)
+    {
+        return BoardEthernet_EvaluateW5300TcpEchoStatus(
+            BOARD_ETHERNET_TCP_ECHO_REQUIRED_MASK,
+            0x1710U,
+            4U,
+            8192U,
+            record);
+    }
+
+    if(testId == BOARD_TEST_ID_ETHERNET_TCP_STABILITY)
+    {
+        return BoardEthernet_EvaluateW5300TcpStabilityStatus(
+            BOARD_ETHERNET_TCP_STABILITY_REQUIRED_MASK,
+            0x1710U,
+            5U,
+            5U,
+            record);
+    }
+
+    if(testId == BOARD_TEST_ID_SPIA_INTERNAL)
+    {
+        return BoardSpi_EvaluateLoopbackStatus(
+            BOARD_SPI_LOOPBACK_REQUIRED_MASK,
+            BOARD_SPI_LOOPBACK_SPIA_PATTERN,
+            BOARD_SPI_LOOPBACK_SPIA_PATTERN,
+            record);
+    }
+
+    if(testId == BOARD_TEST_ID_SPIB_INTERNAL)
+    {
+        return BoardSpi_EvaluateLoopbackStatus(
+            BOARD_SPI_LOOPBACK_REQUIRED_MASK,
+            BOARD_SPI_LOOPBACK_SPIB_PATTERN,
+            BOARD_SPI_LOOPBACK_SPIB_PATTERN,
+            record);
+    }
+
+    if(testId == BOARD_TEST_ID_SPIC_INTERNAL)
+    {
+        return BoardSpi_EvaluateLoopbackStatus(
+            BOARD_SPI_LOOPBACK_REQUIRED_MASK,
+            BOARD_SPI_LOOPBACK_SPIC_PATTERN,
+            BOARD_SPI_LOOPBACK_SPIC_PATTERN,
+            record);
+    }
+
+    if(testId == BOARD_TEST_ID_SPI_EXTERNAL)
+    {
+        return BoardSpi_EvaluateExternalStatus(
+            BOARD_SPI_EXTERNAL_REQUIRED_MASK,
+            BOARD_SPI_EXTERNAL_FAIL_NONE,
+            record);
+    }
+
+    if(testId == BOARD_TEST_ID_SPIB_FLASH_EXTERNAL)
+    {
+        return BoardSpi_EvaluateSpibFlashStatus(
+            BOARD_SPIB_FLASH_REQUIRED_MASK,
+            BOARD_SPIB_FLASH_FAIL_NONE,
+            BOARD_SPIB_FLASH_MANUFACTURER_ID,
+            BOARD_SPIB_FLASH_MEMORY_TYPE,
+            BOARD_SPIB_FLASH_CAPACITY_64_MBIT,
+            record);
+    }
+
+    if(testId == BOARD_TEST_ID_SPIB_FRAM_EXTERNAL)
+    {
+        return BoardSpi_EvaluateSpibFramStatus(
+            BOARD_SPIB_FRAM_REQUIRED_MASK,
+            BOARD_SPIB_FRAM_FAIL_NONE,
+            0x00U,
+            BOARD_SPIB_FRAM_MANUFACTURER_ID,
+            BOARD_SPIB_FRAM_PRODUCT_ID_HIGH,
+            BOARD_SPIB_FRAM_PRODUCT_ID_LOW,
+            record);
+    }
+
+    if(testId == BOARD_TEST_ID_SYS_CLOCK)
+    {
+        return BoardSystem_EvaluateMask(BOARD_SYSTEM_CLOCK_EXPECTED_MASK,
+                                        BOARD_SYSTEM_CLOCK_EXPECTED_MASK,
+                                        BOARD_TEST_ERROR_SYS_CLOCK,
+                                        record);
+    }
+
+    if(testId == BOARD_TEST_ID_SYS_TIMER)
+    {
+        return BoardSystem_EvaluateTimerDelta(1000UL, 900UL, record);
+    }
+
+    if(testId == BOARD_TEST_ID_SYS_WATCHDOG)
+    {
+        return BoardSystem_EvaluateMask(BOARD_SYSTEM_WATCHDOG_DISABLED,
+                                        BOARD_SYSTEM_WATCHDOG_DISABLED,
+                                        BOARD_TEST_ERROR_WATCHDOG_CFG,
+                                        record);
+    }
+
+    if(testId == BOARD_TEST_ID_RAM)
+    {
+        record->measuredValue = (float)BOARD_SYSTEM_RAM_WORD_COUNT;
+        return BOARD_TEST_RESULT_PASS;
+    }
+
+    if(testId == BOARD_TEST_ID_FLASH)
+    {
+        return BoardSystem_EvaluateMask(BOARD_SYSTEM_FLASH_EXPECTED_MASK,
+                                        BOARD_SYSTEM_FLASH_EXPECTED_MASK,
+                                        BOARD_TEST_ERROR_FLASH_CFG,
+                                        record);
+    }
+
+    if(testId == BOARD_TEST_ID_GPIO)
+    {
+        return BoardGpio_EvaluateProgramLedReadback(
+            BOARD_GPIO_LED_READBACK_MASK, record);
+    }
+
+    record->errorCode = BOARD_TEST_ERROR_UNSUPPORTED;
+    return BOARD_TEST_RESULT_NOT_SUPPORTED;
+}
+
+static void TestInitIsSafe(void)
+{
+    const BoardTest_Descriptor *descriptor;
+
+    BoardTest_Init();
+    assert(gBoardTestManager.mode == BOARD_TEST_MODE_IDLE);
+    assert(gBoardTestManager.activeTestId == BOARD_TEST_INVALID_ID);
+    assert(gBoardTestManager.activeStage == BOARD_TEST_STAGE_BOARD_ONLY);
+    assert(gBoardTestManager.hpdInputSource ==
+           BOARD_TEST_HPD_INPUT_SOFTWARE_PHYSICAL);
+    assert(gBoardTestManager.pwmAllowed == 0U);
+    assert(gBoardTestManager.driverAllowed == 0U);
+    assert(BoardTest_GetCount() == BOARD_TEST_ITEM_COUNT);
+    descriptor = BoardTest_GetDescriptor(BOARD_TEST_ITEM_COUNT - 1U);
+    assert(descriptor != 0);
+    assert(descriptor->id == BOARD_TEST_ID_LV_RESOLVER_EXTERNAL);
+    assert(BoardTest_GetDescriptor(BOARD_TEST_ITEM_COUNT) == 0);
+}
+
+static void TestBoardProfiles(void)
+{
+    const BoardProfile_Descriptor *profile;
+    const BoardProfile_HardwareDescriptor *hardware;
+    const BoardTest_Record *record;
+
+    BoardProfile_Init(BOARD_PROFILE_ETHERNET_SPIC_W5500);
+    assert(gBoardProfileRuntimeStatus.state ==
+           BOARD_PROFILE_STATE_NETWORK_READY);
+    assert(BoardProfile_GetCurrent() == 0);
+    assert(BoardTest_StartSingle(BOARD_TEST_ID_I2C_RTC) ==
+           BOARD_TEST_RESULT_SAFETY_LOCKED);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_I2C_RTC);
+    assert(record->errorCode == BOARD_TEST_ERROR_PROFILE_NOT_CONFIRMED);
+
+    assert(BoardProfile_Select(0x7FFFU) ==
+           BOARD_TEST_RESULT_NOT_SUPPORTED);
+    assert(BoardProfile_Select(BOARD_PROFILE_ID_LOW_VOLTAGE_INVERTER) ==
+           BOARD_TEST_RESULT_NOT_SUPPORTED);
+    assert(BoardProfile_Select(BOARD_PROFILE_ID_LOW_ALTITUDE_UNIFIED) ==
+           BOARD_TEST_RESULT_PASS);
+    assert(BoardProfile_Confirm() == BOARD_TEST_RESULT_PASS);
+    profile = BoardProfile_GetCurrent();
+    hardware = BoardProfile_GetCurrentHardware();
+    assert(profile != 0);
+    assert(hardware != 0);
+    assert(profile->id == BOARD_PROFILE_ID_LOW_ALTITUDE_UNIFIED);
+    assert(hardware->boardId == BOARD_PROFILE_ID_LOW_ALTITUDE_UNIFIED);
+    assert(hardware->ethernetInterface == BOARD_PROFILE_ETHERNET_SPIC_W5500);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_ADC_BASIC) != 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_GPIO) != 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_ETHERNET) != 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_ETHERNET_SOCKET) != 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_ETHERNET_TCP_LINK) != 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_ETHERNET_TCP_ECHO) != 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_ETHERNET_TCP_STABILITY) != 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_CAN_HOST) != 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_CAN_EXTERNAL) != 0U);
+    assert(hardware->pins.canBTransmit == 6U);
+    assert(hardware->pins.canBReceive == 7U);
+    assert(hardware->pins.canBTransmitMux == 6U);
+    assert(hardware->pins.canBReceiveMux == 6U);
+    assert(hardware->pins.rs422Transmit == 38U);
+    assert(hardware->pins.rs422Receive == 39U);
+    assert(hardware->pins.rs422TransmitMux == 5U);
+    assert(hardware->pins.rs422ReceiveMux == 5U);
+    assert((BoardProfile_GetEffectiveCapabilities() &
+            BOARD_PROFILE_CAP_RS422) != 0UL);
+    assert((BoardProfile_GetImplementedCapabilities() &
+            BOARD_PROFILE_CAP_RS422) != 0UL);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_RS422_EXTERNAL) != 0U);
+    assert(BoardProfile_IsCapabilityValidated(BOARD_PROFILE_CAP_RS422) != 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_SCI_HOST) == 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_SPIB_INTERNAL) != 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_SPIC_INTERNAL) == 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_SPI_EXTERNAL) == 0U);
+    assert(BoardProfile_IsCapabilityValidated(BOARD_PROFILE_CAP_SPIB) != 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_SPIB_FLASH_EXTERNAL) != 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_SPIB_FRAM_EXTERNAL) != 0U);
+    assert(BoardProfile_IsCapabilityValidated(
+               BOARD_PROFILE_CAP_SPIB_FLASH) == 0U);
+    assert(BoardProfile_IsCapabilityValidated(
+               BOARD_PROFILE_CAP_SPIB_FRAM) != 0U);
+
+    BoardProfile_Clear();
+    assert(gBoardProfileRuntimeStatus.state ==
+           BOARD_PROFILE_STATE_NETWORK_READY);
+    BoardProfile_SetDetectedEthernet(BOARD_PROFILE_ETHERNET_EMIF_W5300);
+    assert(BoardProfile_Select(BOARD_PROFILE_ID_SYSTEM_MASTER) ==
+           BOARD_TEST_RESULT_PASS);
+    assert(BoardProfile_Confirm() == BOARD_TEST_RESULT_PASS);
+    profile = BoardProfile_GetCurrent();
+    hardware = BoardProfile_GetCurrentHardware();
+    assert(profile != 0);
+    assert(hardware != 0);
+    assert(profile->id == BOARD_PROFILE_ID_SYSTEM_MASTER);
+    assert(hardware->boardId == BOARD_PROFILE_ID_SYSTEM_MASTER);
+    assert(hardware->hardwareRevision ==
+           BOARD_PROFILE_HARDWARE_REVISION_SYSTEM_MASTER_V01);
+    assert(BoardProfile_IsCapabilityValidated(BOARD_PROFILE_CAP_SCIB) != 0U);
+    assert((BoardProfile_GetEffectiveCapabilities() &
+            BOARD_PROFILE_CAP_EMIF_W5300) != 0UL);
+    assert(hardware->pins.scibTransmit == BOARD_PIN_SCIB_TX);
+    assert(BoardProfile_GetById(BOARD_PROFILE_ID_LOW_VOLTAGE_INVERTER) != 0);
+    assert(BoardProfile_GetById(BOARD_PROFILE_ID_LOW_ALTITUDE_UNIFIED) != 0);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_SPIB_INTERNAL) != 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_SPI_EXTERNAL) != 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_SPIB_FLASH_EXTERNAL) == 0U);
+    assert(BoardProfile_IsTestSupported(
+               BOARD_TEST_ID_SPIB_FRAM_EXTERNAL) == 0U);
+}
+
+static void TestSingleI2cPasses(void)
+{
+    const BoardTest_Record *record;
+
+    BoardTest_Init();
+    assert(BoardTest_StartSingle(BOARD_TEST_ID_I2C_RTC) ==
+           BOARD_TEST_RESULT_RUNNING);
+    BoardTest_Process(TestExecutor);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_I2C_RTC);
+    assert(record != 0);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    assert(gBoardTestManager.mode == BOARD_TEST_MODE_IDLE);
+}
+
+static void TestSingleFpgaProbePasses(void)
+{
+    const BoardTest_Record *record;
+
+    BoardTest_Init();
+    assert(BoardTest_StartSingle(BOARD_TEST_ID_FPGA_EMIF2_BASIC) ==
+           BOARD_TEST_RESULT_RUNNING);
+    BoardTest_Process(TestExecutor);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_FPGA_EMIF2_BASIC);
+    assert(record != 0);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    assert(record->errorCode == BOARD_TEST_ERROR_NONE);
+    assert(gBoardTestManager.mode == BOARD_TEST_MODE_IDLE);
+}
+
+static void TestSingleDidoUsesExternalStage(void)
+{
+    const BoardTest_Record *record;
+
+    BoardTest_Init();
+    assert(BoardTest_StartSingle(BOARD_TEST_ID_DIDO_FPGA_DO_EXTERNAL) ==
+           BOARD_TEST_RESULT_NOT_SUPPORTED);
+    assert(BoardTest_StartSingleInStage(
+               BOARD_TEST_ID_DIDO_FPGA_DO_EXTERNAL,
+               BOARD_TEST_STAGE_EXTERNAL_CONNECTED) ==
+           BOARD_TEST_RESULT_RUNNING);
+    BoardTest_Process(TestExecutor);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_DIDO_FPGA_DO_EXTERNAL);
+    assert(record != 0);
+    assert(record->result == BOARD_TEST_RESULT_WARN);
+    assert(record->errorCode == BOARD_TEST_ERROR_NONE);
+    assert(gBoardTestManager.mode == BOARD_TEST_MODE_IDLE);
+}
+
+static void TestSinglePwmDidoUsesExternalStage(void)
+{
+    const BoardTest_Record *record;
+
+    BoardProfile_Clear();
+    BoardProfile_SetDetectedEthernet(BOARD_PROFILE_ETHERNET_SPIC_W5500);
+    assert(BoardProfile_Select(BOARD_PROFILE_ID_LOW_ALTITUDE_UNIFIED) ==
+           BOARD_TEST_RESULT_PASS);
+    assert(BoardProfile_Confirm() == BOARD_TEST_RESULT_PASS);
+    BoardTest_Init();
+    assert(BoardTest_StartSingle(BOARD_TEST_ID_PWM_DIDO_EXTERNAL) ==
+           BOARD_TEST_RESULT_NOT_SUPPORTED);
+    assert(BoardTest_StartSingleInStage(
+               BOARD_TEST_ID_PWM_DIDO_EXTERNAL,
+               BOARD_TEST_STAGE_EXTERNAL_CONNECTED) ==
+           BOARD_TEST_RESULT_RUNNING);
+    BoardTest_Process(TestExecutor);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_PWM_DIDO_EXTERNAL);
+    assert(record != 0);
+    assert(record->result == BOARD_TEST_RESULT_WARN);
+    assert(record->errorCode == BOARD_TEST_ERROR_NONE);
+    assert(gBoardTestManager.mode == BOARD_TEST_MODE_IDLE);
+
+    BoardProfile_Clear();
+    BoardProfile_SetDetectedEthernet(BOARD_PROFILE_ETHERNET_EMIF_W5300);
+    assert(BoardProfile_Select(BOARD_PROFILE_ID_SYSTEM_MASTER) ==
+           BOARD_TEST_RESULT_PASS);
+    assert(BoardProfile_Confirm() == BOARD_TEST_RESULT_PASS);
+}
+
+static void TestSingleDriverFaultDiUsesExternalStage(void)
+{
+    const BoardTest_Record *record;
+
+    BoardProfile_Clear();
+    BoardProfile_SetDetectedEthernet(BOARD_PROFILE_ETHERNET_SPIC_W5500);
+    assert(BoardProfile_Select(BOARD_PROFILE_ID_LOW_ALTITUDE_UNIFIED) ==
+           BOARD_TEST_RESULT_PASS);
+    assert(BoardProfile_Confirm() == BOARD_TEST_RESULT_PASS);
+    BoardTest_Init();
+    assert(BoardTest_StartSingle(BOARD_TEST_ID_DRIVER_FAULT_DI_EXTERNAL) ==
+           BOARD_TEST_RESULT_NOT_SUPPORTED);
+    assert(BoardTest_StartSingleInStage(
+               BOARD_TEST_ID_DRIVER_FAULT_DI_EXTERNAL,
+               BOARD_TEST_STAGE_EXTERNAL_CONNECTED) ==
+           BOARD_TEST_RESULT_RUNNING);
+    BoardTest_Process(TestExecutor);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_DRIVER_FAULT_DI_EXTERNAL);
+    assert(record != 0);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    assert(record->errorCode == BOARD_TEST_ERROR_NONE);
+    assert(gBoardTestManager.mode == BOARD_TEST_MODE_IDLE);
+
+    BoardProfile_Clear();
+    BoardProfile_SetDetectedEthernet(BOARD_PROFILE_ETHERNET_EMIF_W5300);
+    assert(BoardProfile_Select(BOARD_PROFILE_ID_SYSTEM_MASTER) ==
+           BOARD_TEST_RESULT_PASS);
+    assert(BoardProfile_Confirm() == BOARD_TEST_RESULT_PASS);
+}
+
+static void TestProtectionAndResetUseExternalStage(void)
+{
+    const BoardTest_Record *record;
+
+    BoardProfile_Clear();
+    BoardProfile_SetDetectedEthernet(BOARD_PROFILE_ETHERNET_SPIC_W5500);
+    assert(BoardProfile_Select(BOARD_PROFILE_ID_LOW_ALTITUDE_UNIFIED) ==
+           BOARD_TEST_RESULT_PASS);
+    assert(BoardProfile_Confirm() == BOARD_TEST_RESULT_PASS);
+    BoardTest_Init();
+    assert(BoardTest_StartSingle(
+               BOARD_TEST_ID_PROTECTION_FAULT_DI_EXTERNAL) ==
+           BOARD_TEST_RESULT_NOT_SUPPORTED);
+    assert(BoardTest_StartSingleInStage(
+               BOARD_TEST_ID_PROTECTION_FAULT_DI_EXTERNAL,
+               BOARD_TEST_STAGE_EXTERNAL_CONNECTED) ==
+           BOARD_TEST_RESULT_RUNNING);
+    BoardTest_Process(TestExecutor);
+    record = BoardTest_GetRecord(
+        BOARD_TEST_ID_PROTECTION_FAULT_DI_EXTERNAL);
+    assert(record != 0);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    assert(record->errorCode == BOARD_TEST_ERROR_NONE);
+    assert(BoardTest_StartSingleInStage(
+               BOARD_TEST_ID_DRIVER_RESET_DO_EXTERNAL,
+               BOARD_TEST_STAGE_EXTERNAL_CONNECTED) ==
+           BOARD_TEST_RESULT_RUNNING);
+    BoardTest_Process(TestExecutor);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_DRIVER_RESET_DO_EXTERNAL);
+    assert(record != 0);
+    assert(record->result == BOARD_TEST_RESULT_WARN);
+    assert(record->errorCode == BOARD_TEST_ERROR_NONE);
+    assert(gBoardTestManager.mode == BOARD_TEST_MODE_IDLE);
+
+    BoardProfile_Clear();
+    BoardProfile_SetDetectedEthernet(BOARD_PROFILE_ETHERNET_EMIF_W5300);
+    assert(BoardProfile_Select(BOARD_PROFILE_ID_SYSTEM_MASTER) ==
+           BOARD_TEST_RESULT_PASS);
+    assert(BoardProfile_Confirm() == BOARD_TEST_RESULT_PASS);
+}
+
+static void TestSingleHdoUsesExternalStage(void)
+{
+    const BoardTest_Record *record;
+
+    BoardTest_Init();
+    assert(BoardTest_StartSingle(BOARD_TEST_ID_HDO_FPGA_EXTERNAL) ==
+           BOARD_TEST_RESULT_NOT_SUPPORTED);
+    assert(BoardTest_StartSingleInStage(
+               BOARD_TEST_ID_HDO_FPGA_EXTERNAL,
+               BOARD_TEST_STAGE_EXTERNAL_CONNECTED) ==
+           BOARD_TEST_RESULT_RUNNING);
+    BoardTest_Process(TestExecutor);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_HDO_FPGA_EXTERNAL);
+    assert(record != 0);
+    assert(record->result == BOARD_TEST_RESULT_WARN);
+    assert(record->errorCode == BOARD_TEST_ERROR_NONE);
+    assert(gBoardTestManager.mode == BOARD_TEST_MODE_IDLE);
+}
+
+static void TestSingleDiUsesExternalStage(void)
+{
+    const BoardTest_Record *record;
+
+    BoardTest_Init();
+    assert(BoardTest_StartSingle(BOARD_TEST_ID_DI_FPGA_EXTERNAL) ==
+           BOARD_TEST_RESULT_NOT_SUPPORTED);
+    assert(BoardTest_StartSingleInStage(
+               BOARD_TEST_ID_DI_FPGA_EXTERNAL,
+               BOARD_TEST_STAGE_EXTERNAL_CONNECTED) ==
+           BOARD_TEST_RESULT_RUNNING);
+    BoardTest_Process(TestExecutor);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_DI_FPGA_EXTERNAL);
+    assert(record != 0);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    assert(record->errorCode == BOARD_TEST_ERROR_NONE);
+    assert(gBoardTestManager.mode == BOARD_TEST_MODE_IDLE);
+}
+
+static void TestDangerousTestIsLocked(void)
+{
+    const BoardTest_Record *record;
+
+    BoardTest_Init();
+    assert(BoardTest_StartSingleInStage(
+               BOARD_TEST_ID_HPD_CURRENT_1,
+               BOARD_TEST_STAGE_HPD_INJECTION) ==
+           BOARD_TEST_RESULT_SAFETY_LOCKED);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_HPD_CURRENT_1);
+    assert(record->result == BOARD_TEST_RESULT_SAFETY_LOCKED);
+    assert(record->errorCode == BOARD_TEST_ERROR_SAFETY_LOCK);
+    assert(gBoardTestManager.pwmAllowed == 0U);
+}
+
+static void TestSingleTestRespectsStage(void)
+{
+    const BoardTest_Record *record;
+
+    BoardTest_Init();
+    assert(BoardTest_StartSingleInStage(
+               BOARD_TEST_ID_CAN_HOST,
+               BOARD_TEST_STAGE_EXTERNAL_CONNECTED) ==
+           BOARD_TEST_RESULT_NOT_SUPPORTED);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_CAN_HOST);
+    assert(record->result == BOARD_TEST_RESULT_SKIP);
+    assert(record->errorCode == BOARD_TEST_ERROR_STAGE_MISMATCH);
+    assert(gBoardTestManager.mode == BOARD_TEST_MODE_IDLE);
+
+    assert(BoardTest_StartSingleInStage(
+               BOARD_TEST_ID_ETHERNET,
+               BOARD_TEST_STAGE_EXTERNAL_CONNECTED) ==
+           BOARD_TEST_RESULT_RUNNING);
+    assert(gBoardTestManager.activeStage ==
+           BOARD_TEST_STAGE_EXTERNAL_CONNECTED);
+    BoardTest_Process(TestExecutor);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_ETHERNET);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    assert(record->errorCode == BOARD_TEST_ERROR_NONE);
+
+    assert(BoardTest_StartSingleInStage(
+               BOARD_TEST_ID_CAN_EXTERNAL,
+               BOARD_TEST_STAGE_EXTERNAL_CONNECTED) ==
+           BOARD_TEST_RESULT_RUNNING);
+    BoardTest_Process(TestExecutor);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_CAN_EXTERNAL);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    assert(record->errorCode == BOARD_TEST_ERROR_NONE);
+
+    assert(BoardTest_StartSingleInStage(
+               BOARD_TEST_ID_SCIA_HANDHELD_EXTERNAL,
+               BOARD_TEST_STAGE_EXTERNAL_CONNECTED) ==
+           BOARD_TEST_RESULT_RUNNING);
+    BoardTest_Process(TestExecutor);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_SCIA_HANDHELD_EXTERNAL);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    assert(record->errorCode == BOARD_TEST_ERROR_NONE);
+}
+
+static void TestAutoSequenceFinishes(void)
+{
+    BoardTest_U16 iteration;
+    const BoardTest_Record *record;
+
+    BoardTest_Init();
+    assert(BoardTest_StartAuto() == BOARD_TEST_RESULT_RUNNING);
+    for(iteration = 0U; iteration <= BOARD_TEST_ITEM_COUNT; iteration++)
+    {
+        BoardTest_Process(TestExecutor);
+    }
+
+    assert(gBoardTestManager.mode == BOARD_TEST_MODE_IDLE);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_SYS_STARTUP);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_SYS_CLOCK);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_SYS_TIMER);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_SYS_WATCHDOG);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_I2C_RTC);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_SCI_HOST);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_CAN_HOST);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_ADC_BASIC);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_PWM_BASIC);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_SPIA_INTERNAL);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_SPIB_INTERNAL);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_SPIC_INTERNAL);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_I2C_B_TMP116);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_EMIF_BASIC);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_RAM);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_FLASH);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_SYS_INTERRUPT);
+    assert(record->result == BOARD_TEST_RESULT_SKIP);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_FPGA_EMIF2_BASIC);
+    assert(record->result == BOARD_TEST_RESULT_SKIP);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_DIDO_FPGA_DO_EXTERNAL);
+    assert(record->result == BOARD_TEST_RESULT_SKIP);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_HPD_LINE_1);
+    assert(record->result == BOARD_TEST_RESULT_SKIP);
+}
+
+static void TestExternalConnectedStage(void)
+{
+    BoardTest_U16 iteration;
+    const BoardTest_Record *record;
+
+    BoardTest_Init();
+    assert(BoardTest_StartStageAuto(
+               BOARD_TEST_STAGE_EXTERNAL_CONNECTED) ==
+           BOARD_TEST_RESULT_RUNNING);
+    assert(gBoardTestManager.activeStage ==
+           BOARD_TEST_STAGE_EXTERNAL_CONNECTED);
+    for(iteration = 0U; iteration <= BOARD_TEST_ITEM_COUNT; iteration++)
+    {
+        BoardTest_Process(TestExecutor);
+    }
+
+    assert(gBoardTestManager.mode == BOARD_TEST_MODE_IDLE);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_CAN_HOST);
+    assert(record->result == BOARD_TEST_RESULT_SKIP);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_GPIO);
+    assert(record->result == BOARD_TEST_RESULT_SKIP);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_CAN_EXTERNAL);
+    assert(record->result == BOARD_TEST_RESULT_SKIP);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_EMIF_EXTERNAL);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_ETHERNET);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_ETHERNET_SOCKET);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_ETHERNET_TCP_LINK);
+    assert(record->result == BOARD_TEST_RESULT_SKIP);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_ETHERNET_TCP_ECHO);
+    assert(record->result == BOARD_TEST_RESULT_SKIP);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_ETHERNET_TCP_STABILITY);
+    assert(record->result == BOARD_TEST_RESULT_SKIP);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_SPI_EXTERNAL);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_I2C_EXTERNAL);
+    assert(record->result == BOARD_TEST_RESULT_SKIP);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_SCI_RS485_EXTERNAL);
+    assert(record->result == BOARD_TEST_RESULT_SKIP);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_SCIA_HANDHELD_EXTERNAL);
+    assert(record->result == BOARD_TEST_RESULT_SKIP);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_DIDO_FPGA_DO_EXTERNAL);
+    assert(record->result == BOARD_TEST_RESULT_WARN);
+    assert(record->measuredValue == 7.0F);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_HDO_FPGA_EXTERNAL);
+    assert(record->result == BOARD_TEST_RESULT_SKIP);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_DI_FPGA_EXTERNAL);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_PWM_DIDO_EXTERNAL);
+    assert(record->result == BOARD_TEST_RESULT_SKIP);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_DRIVER_FAULT_DI_EXTERNAL);
+    assert(record->result == BOARD_TEST_RESULT_SKIP);
+    record = BoardTest_GetRecord(
+        BOARD_TEST_ID_PROTECTION_FAULT_DI_EXTERNAL);
+    assert(record->result == BOARD_TEST_RESULT_SKIP);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_HPD_BUS_1);
+    assert(record->result == BOARD_TEST_RESULT_SKIP);
+}
+
+static void TestHpdInjectionStage(void)
+{
+    BoardTest_U16 iteration;
+    const BoardTest_Record *record;
+
+    BoardTest_Init();
+    assert(BoardTest_StartHpdInjectionAuto(
+               BOARD_TEST_HPD_INPUT_REAL_ADC) ==
+           BOARD_TEST_RESULT_RUNNING);
+    assert(gBoardTestManager.activeStage ==
+           BOARD_TEST_STAGE_HPD_INJECTION);
+    assert(gBoardTestManager.hpdInputSource ==
+           BOARD_TEST_HPD_INPUT_REAL_ADC);
+    for(iteration = 0U; iteration <= BOARD_TEST_ITEM_COUNT; iteration++)
+    {
+        BoardTest_Process(TestExecutor);
+    }
+
+    assert(gBoardTestManager.mode == BOARD_TEST_MODE_IDLE);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_CAN_HOST);
+    assert(record->result == BOARD_TEST_RESULT_SKIP);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_HPD_BUS_1);
+    assert(record->result == BOARD_TEST_RESULT_NOT_SUPPORTED);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_ADC_BASIC);
+    assert(record->result == BOARD_TEST_RESULT_PASS);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_HPD_NTC_1);
+    assert(record->result == BOARD_TEST_RESULT_NOT_SUPPORTED);
+    record = BoardTest_GetRecord(BOARD_TEST_ID_HPD_CURRENT_1);
+    assert(record->result == BOARD_TEST_RESULT_SKIP);
+}
+
+static void TestOutlineLimits(void)
+{
+    assert(HPD_BUS_VOLTAGE_MIN_V == 59.0F);
+    assert(HPD_BUS_VOLTAGE_MAX_V == 61.0F);
+    assert(HPD_LINE_VOLTAGE_MIN_V == 196.0F);
+    assert(HPD_LINE_VOLTAGE_MAX_V == 204.0F);
+    assert(HPD_NTC_REFERENCE_ERROR_MAX_C == 2.0F);
+    assert(HPD_PHASE_SEQUENCE_PULSE_US == 5UL);
+}
+
+static void TestConfirmedPinMap(void)
+{
+    assert(BOARD_DSP_F28377D == 1U);
+    assert(BOARD_PIN_I2CA_SDA == 42U);
+    assert(BOARD_PIN_I2CA_SCL == 43U);
+    assert(BOARD_PIN_I2CA_INT == 114U);
+    assert(BOARD_PIN_I2CB_SDA == 2U);
+    assert(BOARD_PIN_I2CB_SCL == 3U);
+    assert(BOARD_PIN_I2CB_INT == 6U);
+    assert(BOARD_PIN_SCIA_DIRECTION == 133U);
+    assert(BOARD_PIN_SCIA_TX == 135U);
+    assert(BOARD_PIN_SCIA_RX == 136U);
+    assert(BOARD_PIN_SCIB_DIRECTION == 11U);
+    assert(BOARD_PIN_SCIB_TX == 14U);
+    assert(BOARD_PIN_SCIB_RX == 15U);
+    assert(BOARD_PIN_CANB_RX == 13U);
+    assert(BOARD_PIN_CANB_TX == 12U);
+    assert(BOARD_PIN_SPIA_SIMO == 16U);
+    assert(BOARD_PIN_SPIA_SOMI == 17U);
+    assert(BOARD_PIN_SPIA_CLK == 18U);
+    assert(BOARD_PIN_SPIA_CS == 19U);
+    assert(BOARD_PIN_SPIB_SIMO == 24U);
+    assert(BOARD_PIN_SPIB_SOMI == 25U);
+    assert(BOARD_PIN_SPIB_CLK == 26U);
+    assert(BOARD_PIN_SPIB_CS == 27U);
+    assert(BOARD_PIN_SPIC_SIMO == 122U);
+    assert(BOARD_PIN_SPIC_SOMI == 123U);
+    assert(BOARD_PIN_SPIC_CLK == 124U);
+    assert(BOARD_PIN_SPIC_FLASH_CS == 125U);
+    assert(BOARD_PIN_EPWM_A(1U) == 145U);
+    assert(BOARD_PIN_EPWM_B(12U) == 168U);
+    assert(BOARD_EPWM_PAIR_COUNT == 12U);
+    assert(BOARD_PIN_EMIF2_XA(0U) == 98U);
+    assert(BOARD_PIN_EMIF2_XA(11U) == 109U);
+    assert(BOARD_PIN_EMIF2_XD(0U) == 68U);
+    assert(BOARD_PIN_EMIF2_XD(15U) == 53U);
+    assert(BOARD_PIN_EMIF2_CS2 == 116U);
+    assert(BOARD_FPGA_EMIF2_TEST1_ADDR == 0x00002000UL);
+    assert(BOARD_FPGA_EMIF2_TEST2_ADDR == 0x00002555UL);
+    assert(BOARD_FPGA_EMIF2_TEST3_ADDR == 0x00002AAAUL);
+    assert(BOARD_PIN_EMIF1_XA(0U) == 38U);
+    assert(BOARD_PIN_EMIF1_XA(17U) == 90U);
+    assert(BOARD_PIN_EMIF1_XD(0U) == 85U);
+    assert(BOARD_PIN_EMIF1_XD(15U) == 69U);
+}
+
+static void TestProgramLedEvaluation(void)
+{
+    BoardTest_Record record;
+
+    record.errorCode = BOARD_TEST_ERROR_NONE;
+    assert(BoardGpio_EvaluateProgramLedReadback(
+               BOARD_GPIO_LED_READBACK_MASK, &record) ==
+           BOARD_TEST_RESULT_PASS);
+    assert(record.rawValue == BOARD_GPIO_LED_READBACK_MASK);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+
+    assert(BoardGpio_EvaluateProgramLedReadback(0x003EU, &record) ==
+           BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_GPIO_READBACK);
+}
+
+static void TestSystemMaskEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardSystem_EvaluateMask(BOARD_SYSTEM_CLOCK_EXPECTED_MASK,
+                                    BOARD_SYSTEM_CLOCK_EXPECTED_MASK,
+                                    BOARD_TEST_ERROR_SYS_CLOCK,
+                                    &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+
+    assert(BoardSystem_EvaluateMask(0UL,
+                                    BOARD_SYSTEM_CLOCK_EXPECTED_MASK,
+                                    BOARD_TEST_ERROR_SYS_CLOCK,
+                                    &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_SYS_CLOCK);
+}
+
+static void TestSystemTimerEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardSystem_EvaluateTimerDelta(1000UL, 900UL, &record) ==
+           BOARD_TEST_RESULT_PASS);
+    assert(record.rawValue == 100UL);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+
+    assert(BoardSystem_EvaluateTimerDelta(900UL, 1000UL, &record) ==
+           BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_SYS_TIMER);
+}
+
+static void TestTmp116Evaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardI2c_EvaluateTmp116Read(BOARD_I2C_STATUS_SUCCESS,
+                                       BOARD_I2C_TMP116_ADDR_MIN,
+                                       BOARD_I2C_TMP116_DEVICE_ID,
+                                       0x1900U,
+                                       &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x48111600UL);
+
+    assert(BoardI2c_EvaluateTmp116Read(0x0002U,
+                                       0U,
+                                       0U,
+                                       0U,
+                                       &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_I2C_B_TMP116);
+}
+
+static void TestSciLoopbackEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardSci_EvaluateLoopbackStatus(
+               (BoardTest_U16)BOARD_SCI_LOOPBACK_EXPECTED_MASK,
+               BOARD_SCI_LOOPBACK_SCIA_PATTERN,
+               BOARD_SCI_LOOPBACK_SCIB_PATTERN,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x00035AA5UL);
+
+    assert(BoardSci_EvaluateLoopbackStatus(
+               (BoardTest_U16)BOARD_SCI_LOOPBACK_SCIA_PASS,
+               BOARD_SCI_LOOPBACK_SCIA_PATTERN,
+               0U,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_SCI_LOOPBACK);
+}
+
+static void TestSciRs485ExternalEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardSci_EvaluateRs485ExternalStatus(
+               (BoardTest_U16)BOARD_SCI_RS485_EXTERNAL_REQUIRED_MASK,
+               BOARD_SCI_RS485_EXTERNAL_REQUEST,
+               BOARD_SCI_RS485_EXTERNAL_RESPONSE,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x00FFA55AUL);
+
+    assert(BoardSci_EvaluateRs485ExternalStatus(
+               (BoardTest_U16)
+               (BOARD_SCI_RS485_EXTERNAL_REQUIRED_MASK &
+                ~BOARD_SCI_RS485_EXTERNAL_RX_MATCH),
+               0x0000U,
+               BOARD_SCI_RS485_EXTERNAL_RESPONSE,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_SCI_RS485_EXTERNAL);
+}
+
+static void TestSciRs422ExternalEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardSci_EvaluateRs422ExternalStatus(
+               (BoardTest_U16)BOARD_SCI_RS422_EXTERNAL_REQUIRED_MASK,
+               BOARD_SCI_RS422_EXTERNAL_REQUEST,
+               BOARD_SCI_RS422_EXTERNAL_RESPONSE,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x001FA55AUL);
+
+    assert(BoardSci_EvaluateRs422ExternalStatus(
+               (BoardTest_U16)
+               (BOARD_SCI_RS422_EXTERNAL_REQUIRED_MASK &
+                ~BOARD_SCI_RS422_EXTERNAL_RX_MATCH),
+               0x0000U,
+               BOARD_SCI_RS422_EXTERNAL_RESPONSE,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_RS422_EXTERNAL);
+}
+
+static void TestSciaHandheldExternalEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardSci_EvaluateSciaHandheldExternalStatus(
+               (BoardTest_U16)BOARD_SCI_HANDHELD_EXTERNAL_DIAGNOSTIC_MASK,
+               BOARD_SCI_HANDHELD_EXTERNAL_REQUEST,
+               BOARD_SCI_HANDHELD_EXTERNAL_RESPONSE,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x00FFA55AUL);
+
+    assert(BoardSci_EvaluateSciaHandheldExternalStatus(
+               (BoardTest_U16)BOARD_SCI_HANDHELD_EXTERNAL_REQUIRED_MASK,
+               0x0012U,
+               BOARD_SCI_HANDHELD_EXTERNAL_RESPONSE,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x00F7125AUL);
+
+    assert(BoardSci_EvaluateSciaHandheldExternalStatus(
+               (BoardTest_U16)
+               (BOARD_SCI_HANDHELD_EXTERNAL_REQUIRED_MASK &
+                ~BOARD_SCI_HANDHELD_EXTERNAL_RX_READY),
+               0x0000U,
+               BOARD_SCI_HANDHELD_EXTERNAL_RESPONSE,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_SCIA_HANDHELD_EXTERNAL);
+}
+
+static void TestCanLoopbackEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardCan_EvaluateLoopbackStatus(
+               (BoardTest_U16)BOARD_CAN_LOOPBACK_EXPECTED_MASK,
+               BOARD_CAN_LOOPBACK_TX_PATTERN,
+               BOARD_CAN_LOOPBACK_TX_PATTERN,
+               0U,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+
+    assert(BoardCan_EvaluateLoopbackStatus(
+               (BoardTest_U16)BOARD_CAN_LOOPBACK_REQUIRED_MASK,
+               BOARD_CAN_LOOPBACK_TX_PATTERN,
+               BOARD_CAN_LOOPBACK_TX_PATTERN,
+               0x01E0U,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.expectedMin == (float)BOARD_CAN_LOOPBACK_REQUIRED_MASK);
+    assert(record.expectedMax == (float)BOARD_CAN_LOOPBACK_DIAGNOSTIC_MASK);
+
+    assert(BoardCan_EvaluateLoopbackStatus(
+               (BoardTest_U16)(BOARD_CAN_LOOPBACK_EXPECTED_MASK &
+                               ~BOARD_CAN_LOOPBACK_DATA_MATCH),
+               BOARD_CAN_LOOPBACK_TX_PATTERN,
+               0UL,
+               0U,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_CAN_LOOPBACK);
+}
+
+static void TestCanExternalEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardCan_EvaluateExternalStatus(
+               (BoardTest_U16)BOARD_CAN_EXTERNAL_EXPECTED_MASK,
+               BOARD_CAN_EXTERNAL_REQUEST_ID,
+               BOARD_CAN_EXTERNAL_DATA_BYTES,
+               BOARD_CAN_EXTERNAL_REQUEST_PATTERN,
+               BOARD_CAN_EXTERNAL_RESPONSE_ID,
+               BOARD_CAN_EXTERNAL_REQUEST_PATTERN,
+               0U,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+
+    assert(BoardCan_EvaluateExternalStatus(
+               (BoardTest_U16)(BOARD_CAN_EXTERNAL_EXPECTED_MASK &
+                               ~BOARD_CAN_EXTERNAL_RX_PATTERN_MATCH),
+               BOARD_CAN_EXTERNAL_REQUEST_ID,
+               BOARD_CAN_EXTERNAL_DATA_BYTES,
+               0UL,
+               BOARD_CAN_EXTERNAL_RESPONSE_ID,
+               BOARD_CAN_EXTERNAL_REQUEST_PATTERN,
+               0U,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_CAN_EXTERNAL);
+    assert(record.expectedMin == (float)BOARD_CAN_EXTERNAL_REQUIRED_MASK);
+    assert(record.expectedMax == (float)BOARD_CAN_EXTERNAL_DIAGNOSTIC_MASK);
+}
+
+static void TestCanDynamicPinConfiguration(void)
+{
+    const BoardProfile_HardwareDescriptor *hardware;
+    BoardCan_PinConfiguration configuration;
+
+    hardware = BoardProfile_GetHardwareDescriptor(
+        BOARD_PROFILE_ID_SYSTEM_MASTER,
+        BOARD_PROFILE_HARDWARE_REVISION_SYSTEM_MASTER_V01,
+        BOARD_PROFILE_ETHERNET_EMIF_W5300);
+    assert(BoardCan_ResolvePinConfiguration(hardware, &configuration) != 0U);
+    assert(configuration.txGpio == 12U);
+    assert(configuration.rxGpio == 13U);
+    assert(configuration.txMux == 2U);
+    assert(configuration.rxMux == 2U);
+
+    hardware = BoardProfile_GetHardwareDescriptor(
+        BOARD_PROFILE_ID_LOW_VOLTAGE_INVERTER,
+        BOARD_PROFILE_HARDWARE_REVISION_LOW_VOLTAGE_V04,
+        BOARD_PROFILE_ETHERNET_EMIF_W5300);
+    assert(BoardCan_ResolvePinConfiguration(hardware, &configuration) != 0U);
+    assert(configuration.txGpio == 6U);
+    assert(configuration.rxGpio == 7U);
+    assert(configuration.txMux == 6U);
+    assert(configuration.rxMux == 6U);
+
+    hardware = BoardProfile_GetHardwareDescriptor(
+        BOARD_PROFILE_ID_LOW_VOLTAGE_INVERTER,
+        BOARD_PROFILE_HARDWARE_REVISION_LOW_VOLTAGE_V04,
+        BOARD_PROFILE_ETHERNET_SPIC_W5500);
+    assert(BoardCan_ResolvePinConfiguration(hardware, &configuration) == 0U);
+
+    hardware = BoardProfile_GetHardwareDescriptor(
+        BOARD_PROFILE_ID_LOW_ALTITUDE_UNIFIED,
+        BOARD_PROFILE_HARDWARE_REVISION_LOW_ALTITUDE_V01,
+        BOARD_PROFILE_ETHERNET_SPIC_W5500);
+    assert(BoardCan_ResolvePinConfiguration(hardware, &configuration) != 0U);
+    assert(configuration.txGpio == 6U);
+    assert(configuration.rxGpio == 7U);
+    assert(configuration.txMux == 6U);
+    assert(configuration.rxMux == 6U);
+    assert(BoardCan_ResolvePinConfiguration(0, &configuration) == 0U);
+    assert(BoardCan_ResolvePinConfiguration(hardware, 0) == 0U);
+}
+
+static void TestScibDynamicPinConfiguration(void)
+{
+    const BoardProfile_HardwareDescriptor *hardware;
+    BoardSci_ScibPinConfiguration configuration;
+
+    hardware = BoardProfile_GetHardwareDescriptor(
+        BOARD_PROFILE_ID_SYSTEM_MASTER,
+        BOARD_PROFILE_HARDWARE_REVISION_SYSTEM_MASTER_V01,
+        BOARD_PROFILE_ETHERNET_EMIF_W5300);
+    assert(BoardSci_ResolveScibPinConfiguration(hardware, &configuration) !=
+           0U);
+    assert(configuration.directionGpio == 11U);
+    assert(configuration.txGpio == 14U);
+    assert(configuration.rxGpio == 15U);
+    assert(configuration.txMux == 2U);
+    assert(configuration.rxMux == 2U);
+
+    hardware = BoardProfile_GetHardwareDescriptor(
+        BOARD_PROFILE_ID_LOW_VOLTAGE_INVERTER,
+        BOARD_PROFILE_HARDWARE_REVISION_LOW_VOLTAGE_V04,
+        BOARD_PROFILE_ETHERNET_EMIF_W5300);
+    assert(BoardSci_ResolveScibPinConfiguration(hardware, &configuration) !=
+           0U);
+    assert(configuration.directionGpio == 32U);
+    assert(configuration.txGpio == 10U);
+    assert(configuration.rxGpio == 11U);
+    assert(configuration.txMux == 6U);
+    assert(configuration.rxMux == 6U);
+
+    hardware = BoardProfile_GetHardwareDescriptor(
+        BOARD_PROFILE_ID_LOW_VOLTAGE_INVERTER,
+        BOARD_PROFILE_HARDWARE_REVISION_LOW_VOLTAGE_V04,
+        BOARD_PROFILE_ETHERNET_SPIC_W5500);
+    assert(BoardSci_ResolveScibPinConfiguration(hardware, &configuration) ==
+           0U);
+
+    hardware = BoardProfile_GetHardwareDescriptor(
+        BOARD_PROFILE_ID_LOW_ALTITUDE_UNIFIED,
+        BOARD_PROFILE_HARDWARE_REVISION_LOW_ALTITUDE_V01,
+        BOARD_PROFILE_ETHERNET_SPIC_W5500);
+    assert(BoardSci_ResolveScibPinConfiguration(hardware, &configuration) ==
+           0U);
+    assert(BoardSci_ResolveScibPinConfiguration(0, &configuration) == 0U);
+    assert(BoardSci_ResolveScibPinConfiguration(hardware, 0) == 0U);
+}
+
+static void TestRs422DynamicPinConfiguration(void)
+{
+    const BoardProfile_HardwareDescriptor *hardware;
+    BoardSci_Rs422PinConfiguration configuration;
+
+    hardware = BoardProfile_GetHardwareDescriptor(
+        BOARD_PROFILE_ID_LOW_ALTITUDE_UNIFIED,
+        BOARD_PROFILE_HARDWARE_REVISION_LOW_ALTITUDE_V01,
+        BOARD_PROFILE_ETHERNET_SPIC_W5500);
+    assert(BoardSci_ResolveRs422PinConfiguration(hardware, &configuration) !=
+           0U);
+    assert(configuration.txGpio == 38U);
+    assert(configuration.rxGpio == 39U);
+    assert(configuration.txMux == 5U);
+    assert(configuration.rxMux == 5U);
+
+    hardware = BoardProfile_GetHardwareDescriptor(
+        BOARD_PROFILE_ID_LOW_VOLTAGE_INVERTER,
+        BOARD_PROFILE_HARDWARE_REVISION_LOW_VOLTAGE_V04,
+        BOARD_PROFILE_ETHERNET_EMIF_W5300);
+    assert(BoardSci_ResolveRs422PinConfiguration(hardware, &configuration) ==
+           0U);
+    assert(BoardSci_ResolveRs422PinConfiguration(0, &configuration) == 0U);
+    assert(BoardSci_ResolveRs422PinConfiguration(hardware, 0) == 0U);
+}
+
+static void TestW5500BootPinCompatibility(void)
+{
+    const BoardProfile_HardwareDescriptor *hardware;
+
+    hardware = BoardProfile_GetHardwareDescriptor(
+        BOARD_PROFILE_ID_LOW_ALTITUDE_UNIFIED,
+        BOARD_PROFILE_HARDWARE_REVISION_LOW_ALTITUDE_V01,
+        BOARD_PROFILE_ETHERNET_SPIC_W5500);
+    assert(BoardW5500_IsBootPinMapCompatible(hardware) != 0U);
+
+    hardware = BoardProfile_GetHardwareDescriptor(
+        BOARD_PROFILE_ID_LOW_VOLTAGE_INVERTER,
+        BOARD_PROFILE_HARDWARE_REVISION_LOW_VOLTAGE_V04,
+        BOARD_PROFILE_ETHERNET_EMIF_W5300);
+    assert(BoardW5500_IsBootPinMapCompatible(hardware) == 0U);
+    assert(BoardW5500_IsBootPinMapCompatible(0) == 0U);
+}
+
+static void TestAdcBasicEvaluation(void)
+{
+    static const BoardTest_U16 expectedSignals[BOARD_ADC_MAX_CHANNEL_COUNT] =
+    {
+        BOARD_ADC_SIGNAL_IU1,
+        BOARD_ADC_SIGNAL_IV1,
+        BOARD_ADC_SIGNAL_IW1,
+        BOARD_ADC_SIGNAL_IU2,
+        BOARD_ADC_SIGNAL_IV2,
+        BOARD_ADC_SIGNAL_IW2,
+        BOARD_ADC_SIGNAL_UDC1,
+        BOARD_ADC_SIGNAL_UDC2,
+        BOARD_ADC_SIGNAL_MOTOR_TEMPERATURE,
+        BOARD_ADC_SIGNAL_FAULT_1,
+        BOARD_ADC_SIGNAL_FAULT_2,
+        BOARD_ADC_SIGNAL_INVERTER_TEMPERATURE_1,
+        BOARD_ADC_SIGNAL_INVERTER_TEMPERATURE_2,
+        BOARD_ADC_SIGNAL_UUV1,
+        BOARD_ADC_SIGNAL_UVW1,
+        BOARD_ADC_SIGNAL_UUV2,
+        BOARD_ADC_SIGNAL_UVW2
+    };
+    static const BoardTest_U16 expectedModules[BOARD_ADC_MAX_CHANNEL_COUNT] =
+    {
+        BOARD_ADC_MODULE_D,
+        BOARD_ADC_MODULE_C,
+        BOARD_ADC_MODULE_B,
+        BOARD_ADC_MODULE_A,
+        BOARD_ADC_MODULE_B,
+        BOARD_ADC_MODULE_C,
+        BOARD_ADC_MODULE_A,
+        BOARD_ADC_MODULE_D,
+        BOARD_ADC_MODULE_A,
+        BOARD_ADC_MODULE_D,
+        BOARD_ADC_MODULE_D,
+        BOARD_ADC_MODULE_A,
+        BOARD_ADC_MODULE_A,
+        BOARD_ADC_MODULE_D,
+        BOARD_ADC_MODULE_C,
+        BOARD_ADC_MODULE_B,
+        BOARD_ADC_MODULE_A
+    };
+    static const BoardTest_U16 expectedChannels[BOARD_ADC_MAX_CHANNEL_COUNT] =
+    {
+        0U, 3U, 3U, 15U, 2U, 2U, 14U, 1U, 3U, 2U,
+        3U, 4U, 5U, 4U, 4U, 0U, 0U
+    };
+    BoardAdc_ChannelConfig config;
+    BoardTest_Record record;
+    BoardTest_U16 index;
+    BoardTest_U16 raw;
+    float voltage;
+
+    assert(BoardAdc_EvaluateBasicSample(
+               BOARD_ADC_BASIC_STATUS_REQUIRED_MASK,
+               2048U,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x001F0800UL);
+
+    assert(BoardAdc_EvaluateBasicSample(
+               (BoardTest_U16)(BOARD_ADC_BASIC_STATUS_REQUIRED_MASK &
+                               ~BOARD_ADC_BASIC_CONVERSION_DONE),
+               2048U,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_ADC_SAMPLE);
+
+    assert(BoardAdc_VoltageToRaw(0.0F) == 0U);
+    assert(BoardAdc_VoltageToRaw(BOARD_ADC_REFERENCE_VOLTAGE_V) ==
+           BOARD_ADC_RAW_MAX);
+    raw = BoardAdc_VoltageToRaw(1.65F);
+    assert((raw == 2047U) || (raw == 2048U));
+
+    voltage = BoardAdc_RawToVoltage(BOARD_ADC_RAW_MAX);
+    assert(voltage > 3.29F);
+    assert(voltage <= BOARD_ADC_REFERENCE_VOLTAGE_V);
+
+    assert(BoardAdc_GetChannelCount(
+               BOARD_PROFILE_ID_LOW_ALTITUDE_UNIFIED,
+               BOARD_PROFILE_HARDWARE_REVISION_LOW_ALTITUDE_V01) ==
+           BOARD_ADC_MAX_CHANNEL_COUNT);
+    for(index = 0U; index < BOARD_ADC_MAX_CHANNEL_COUNT; index++)
+    {
+        assert(BoardAdc_GetChannelConfig(
+                   BOARD_PROFILE_ID_LOW_ALTITUDE_UNIFIED,
+                   BOARD_PROFILE_HARDWARE_REVISION_LOW_ALTITUDE_V01,
+                   index,
+                   &config) != 0U);
+        assert(config.signalId == expectedSignals[index]);
+        assert(config.module == expectedModules[index]);
+        assert(config.channel == expectedChannels[index]);
+    }
+    assert(BoardAdc_GetChannelConfig(
+               BOARD_PROFILE_ID_LOW_ALTITUDE_UNIFIED,
+               BOARD_PROFILE_HARDWARE_REVISION_LOW_ALTITUDE_V01,
+               BOARD_ADC_MAX_CHANNEL_COUNT,
+               &config) == 0U);
+
+    assert(BoardAdc_EvaluateChannelScan(
+               BOARD_ADC_BASIC_STATUS_REQUIRED_MASK,
+               BOARD_ADC_MAX_CHANNEL_COUNT,
+               BOARD_ADC_MAX_CHANNEL_COUNT,
+               BOARD_ADC_NO_FAILED_CHANNEL,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x001FFFFFUL);
+    assert(record.measuredValue == 17.0F);
+
+    assert(BoardAdc_EvaluateChannelScan(
+               (BoardTest_U16)(BOARD_ADC_BASIC_STATUS_REQUIRED_MASK &
+                               ~BOARD_ADC_BASIC_CONVERSION_DONE),
+               16U,
+               BOARD_ADC_MAX_CHANNEL_COUNT,
+               7U,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_ADC_SAMPLE);
+    assert(record.rawValue == 0x00170007UL);
+
+    assert(BoardAdc_IsExternalInjectionSignalSupported(
+               BOARD_ADC_SIGNAL_IU1) != 0U);
+    assert(BoardAdc_IsExternalInjectionSignalSupported(
+               BOARD_ADC_SIGNAL_IW2) != 0U);
+    assert(BoardAdc_IsExternalInjectionSignalSupported(
+               BOARD_ADC_SIGNAL_UDC1) != 0U);
+    assert(BoardAdc_IsExternalInjectionSignalSupported(
+               BOARD_ADC_SIGNAL_UDC2) != 0U);
+    assert(BoardAdc_IsExternalInjectionSignalSupported(
+               BOARD_ADC_SIGNAL_INVERTER_TEMPERATURE_1) != 0U);
+    assert(BoardAdc_IsExternalInjectionSignalSupported(
+               BOARD_ADC_SIGNAL_INVERTER_TEMPERATURE_2) != 0U);
+    assert(BoardAdc_IsExternalInjectionSignalSupported(
+               BOARD_ADC_SIGNAL_UUV1) != 0U);
+    assert(BoardAdc_IsExternalInjectionSignalSupported(
+               BOARD_ADC_SIGNAL_UVW1) != 0U);
+    assert(BoardAdc_IsExternalInjectionSignalSupported(
+               BOARD_ADC_SIGNAL_UUV2) != 0U);
+    assert(BoardAdc_IsExternalInjectionSignalSupported(
+               BOARD_ADC_SIGNAL_UVW2) != 0U);
+    assert(BoardAdc_IsExternalInjectionSignalSupported(
+               BOARD_ADC_SIGNAL_MOTOR_TEMPERATURE) == 0U);
+    assert(BoardAdc_IsExternalInjectionSignalSupported(
+               BOARD_ADC_SIGNAL_FAULT_1) == 0U);
+    assert(BoardAdc_IsExternalInjectionSignalSupported(
+               BOARD_ADC_SIGNAL_FAULT_2) == 0U);
+    assert(BoardAdc_IsExternalInjectionSignalSupported(
+               BOARD_ADC_SIGNAL_D5V) == 0U);
+    assert(BoardAdc_IsExternalInjectionSignalSupported(
+               BOARD_ADC_SIGNAL_A5V) == 0U);
+    assert(BoardAdc_IsExternalInjectionSelectionSupported(
+               BOARD_ADC_EXTERNAL_SELECTION_GROUP_1) != 0U);
+    assert(BoardAdc_IsExternalInjectionSelectionSupported(
+               BOARD_ADC_EXTERNAL_SELECTION_GROUP_2) != 0U);
+    assert(BoardAdc_IsExternalInjectionSelectionSupported(0x0082U) == 0U);
+    {
+        static const BoardTest_U16 expectedGroup1[] =
+        {
+            BOARD_ADC_SIGNAL_IU1,
+            BOARD_ADC_SIGNAL_IV1,
+            BOARD_ADC_SIGNAL_IW1,
+            BOARD_ADC_SIGNAL_UDC1,
+            BOARD_ADC_SIGNAL_INVERTER_TEMPERATURE_1,
+            BOARD_ADC_SIGNAL_UUV1,
+            BOARD_ADC_SIGNAL_UVW1
+        };
+        static const BoardTest_U16 expectedGroup2[] =
+        {
+            BOARD_ADC_SIGNAL_IU2,
+            BOARD_ADC_SIGNAL_IV2,
+            BOARD_ADC_SIGNAL_IW2,
+            BOARD_ADC_SIGNAL_UDC2,
+            BOARD_ADC_SIGNAL_INVERTER_TEMPERATURE_2,
+            BOARD_ADC_SIGNAL_UUV2,
+            BOARD_ADC_SIGNAL_UVW2
+        };
+        BoardTest_U16 groupSignal;
+        BoardTest_U16 groupIndex;
+
+        for(groupIndex = 0U;
+            groupIndex < BOARD_ADC_EXTERNAL_GROUP_CHANNEL_COUNT;
+            groupIndex++)
+        {
+            assert(BoardAdc_GetExternalInjectionGroupSignal(
+                       BOARD_ADC_EXTERNAL_SELECTION_GROUP_1,
+                       groupIndex,
+                       &groupSignal) != 0U);
+            assert(groupSignal == expectedGroup1[groupIndex]);
+            assert(BoardAdc_GetExternalInjectionGroupSignal(
+                       BOARD_ADC_EXTERNAL_SELECTION_GROUP_2,
+                       groupIndex,
+                       &groupSignal) != 0U);
+            assert(groupSignal == expectedGroup2[groupIndex]);
+        }
+        assert(BoardAdc_GetExternalInjectionGroupSignal(
+                   BOARD_ADC_EXTERNAL_SELECTION_GROUP_1,
+                   BOARD_ADC_EXTERNAL_GROUP_CHANNEL_COUNT,
+                   &groupSignal) == 0U);
+    }
+    assert(BoardAdc_ConfigureExternalInjection(
+               BOARD_ADC_SIGNAL_IV1, 1000U, 100U) != 0U);
+    assert(gBoardAdcExternalInjectionConfig.configured != 0U);
+    assert(gBoardAdcExternalInjectionConfig.signalId == BOARD_ADC_SIGNAL_IV1);
+    assert(BoardAdc_ConfigureExternalInjection(
+               BOARD_ADC_SIGNAL_UDC1, 1000U, 100U) != 0U);
+    assert(BoardAdc_ConfigureExternalInjection(
+               BOARD_ADC_SIGNAL_INVERTER_TEMPERATURE_1,
+               1000U,
+               100U) != 0U);
+    assert(BoardAdc_ConfigureExternalInjection(
+               BOARD_ADC_SIGNAL_D5V, 1000U, 100U) == 0U);
+    assert(BoardAdc_ConfigureExternalInjection(
+               BOARD_ADC_EXTERNAL_SELECTION_GROUP_1,
+               1000U,
+               100U) != 0U);
+    assert(BoardAdc_ConfigureExternalInjection(
+               BOARD_ADC_SIGNAL_IU1, 5001U, 100U) == 0U);
+    assert(BoardAdc_ConfigureExternalInjection(
+               BOARD_ADC_SIGNAL_IU1, 1000U, 0U) == 0U);
+
+    assert(BoardAdc_EvaluateExternalInjection(
+               BOARD_ADC_BASIC_STATUS_REQUIRED_MASK,
+               2048U,
+               2.5F,
+               0.1F,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.measuredValue > 2.49F);
+    assert(record.measuredValue < 2.51F);
+    assert(BoardAdc_EvaluateExternalInjection(
+               BOARD_ADC_BASIC_STATUS_REQUIRED_MASK,
+               2048U,
+               1.0F,
+               0.1F,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_ADC_EXTERNAL_INJECTION);
+
+    assert(BoardAdc_EvaluateExternalInjectionGroup(
+               BOARD_ADC_EXTERNAL_SELECTION_GROUP_1,
+               BOARD_ADC_EXTERNAL_GROUP_REQUIRED_MASK,
+               0U,
+               BOARD_ADC_EXTERNAL_GROUP_CHANNEL_COUNT,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x007F0000UL);
+    assert(record.measuredValue == 7.0F);
+    assert(BoardAdc_EvaluateExternalInjectionGroup(
+               BOARD_ADC_EXTERNAL_SELECTION_GROUP_2,
+               0x007BU,
+               0x0004U,
+               BOARD_ADC_EXTERNAL_GROUP_CHANNEL_COUNT,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_ADC_EXTERNAL_INJECTION);
+    assert(record.rawValue == 0x007B0004UL);
+    assert(record.measuredValue == 6.0F);
+
+    assert(BoardAdc_IsMuxSelectionSupported(
+               BOARD_TEST_ID_ADC_PT100_MUX_EXTERNAL,
+               BOARD_ADC_EXTERNAL_SELECTION_PT100_BASE + 3U) != 0U);
+    assert(BoardAdc_IsMuxSelectionSupported(
+               BOARD_TEST_ID_ADC_PT100_MUX_EXTERNAL,
+               BOARD_ADC_EXTERNAL_SELECTION_PT100_BASE) == 0U);
+    assert(BoardAdc_IsMuxSelectionSupported(
+               BOARD_TEST_ID_ADC_PT100_MUX_EXTERNAL,
+               BOARD_ADC_EXTERNAL_SELECTION_PT100_BASE + 1U) == 0U);
+    assert(BoardAdc_IsMuxSelectionSupported(
+               BOARD_TEST_ID_ADC_PT100_MUX_EXTERNAL,
+               BOARD_ADC_EXTERNAL_SELECTION_PT100_BASE + 2U) == 0U);
+    assert(BoardAdc_IsMuxSelectionSupported(
+               BOARD_TEST_ID_ADC_PT100_MUX_EXTERNAL,
+               BOARD_ADC_EXTERNAL_SELECTION_PT100_BASE + 4U) == 0U);
+    assert(BoardAdc_IsMuxSelectionSupported(
+               BOARD_TEST_ID_ADC_NTC_MUX_EXTERNAL,
+               0x00A5U) == 0U);
+    assert(BoardAdc_IsMuxSelectionSupported(
+               BOARD_TEST_ID_ADC_FAULT_MUX_EXTERNAL,
+               BOARD_ADC_EXTERNAL_SELECTION_FAULT_GROUP_1_BASE + 5U) == 0U);
+    assert(BoardAdc_IsMuxSelectionSupported(
+               BOARD_TEST_ID_ADC_FAULT_MUX_EXTERNAL,
+               BOARD_ADC_EXTERNAL_SELECTION_FAULT_GROUP_2_BASE + 5U) == 0U);
+    assert(BoardAdc_GetMuxSelectorCode(
+               BOARD_ADC_EXTERNAL_SELECTION_PT100_BASE + 2U,
+               &raw) != 0U);
+    assert(raw == 2U);
+    assert(BoardAdc_GetMuxSelectorCode(
+               BOARD_ADC_EXTERNAL_SELECTION_PT100_BASE,
+               &raw) != 0U);
+    assert(raw == 0U);
+    assert(BoardAdc_GetMuxSelectorCode(
+               BOARD_ADC_EXTERNAL_SELECTION_PT100_BASE + 1U,
+               &raw) != 0U);
+    assert(raw == 1U);
+    assert(BoardAdc_GetMuxSelectorCode(
+               BOARD_ADC_EXTERNAL_SELECTION_PT100_BASE + 3U,
+               &raw) != 0U);
+    assert(raw == 3U);
+    assert(BoardAdc_GetMuxSelectorCode(
+               BOARD_ADC_EXTERNAL_SELECTION_FAULT_GROUP_1_BASE + 4U,
+               &raw) != 0U);
+    assert(raw == 4U);
+    assert(BoardAdc_GetMuxSelectorCode(
+               BOARD_ADC_EXTERNAL_SELECTION_FAULT_GROUP_2_BASE + 2U,
+               &raw) != 0U);
+    assert(raw == 2U);
+    assert(BoardAdc_GetMuxSelectorCode(0x00D0U, &raw) == 0U);
+    voltage = BoardAdc_Pt100VoltageToResistance(0.0F);
+    assert(voltage > 179.9F);
+    assert(voltage < 180.1F);
+    voltage = BoardAdc_Pt100VoltageToResistance(1.6877272F);
+    assert(voltage > 119.9F);
+    assert(voltage < 120.1F);
+    raw = BoardAdc_VoltageToRaw(1.6877272F);
+    assert(BoardAdc_EvaluatePt100Injection(
+               BOARD_ADC_BASIC_STATUS_REQUIRED_MASK,
+               raw,
+               1.688F,
+               0.100F,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.measuredValue > 1.687F);
+    assert(record.measuredValue < 1.689F);
+    assert(record.expectedMin > 1.587F);
+    assert(record.expectedMax < 1.789F);
+    assert(BoardAdc_EvaluatePt100Injection(
+               BOARD_ADC_BASIC_STATUS_REQUIRED_MASK,
+               raw,
+               2.557F,
+               0.100F,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_ADC_MUX_INJECTION);
+    voltage = BoardAdc_FaultVoltageToDutyPercent(2.5F);
+    assert(voltage > 49.9F);
+    assert(voltage < 50.1F);
+    assert(BoardAdc_EvaluateMuxInjection(
+               BOARD_ADC_EXTERNAL_SELECTION_PT100_BASE,
+               0x0001U,
+               0U,
+               1U,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(BoardAdc_EvaluateMuxInjection(
+               BOARD_ADC_EXTERNAL_SELECTION_FAULT_GROUP_1_BASE,
+               0x0001U,
+               0x0000U,
+               1U,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(BoardAdc_EvaluateMuxInjection(
+               BOARD_ADC_EXTERNAL_SELECTION_FAULT_GROUP_2_BASE,
+               0x0000U,
+               0x0001U,
+               1U,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_ADC_MUX_INJECTION);
+    assert(BoardAdc_EvaluateExternalInjection(
+               BOARD_ADC_BASIC_STATUS_REQUIRED_MASK,
+               BOARD_ADC_RAW_MAX,
+               5.0F,
+               0.01F,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.measuredValue == 5.0F);
+}
+
+static void TestSpiLoopbackEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardSpi_EvaluateLoopbackStatus(
+               BOARD_SPI_LOOPBACK_REQUIRED_MASK,
+               BOARD_SPI_LOOPBACK_SPIA_PATTERN,
+               BOARD_SPI_LOOPBACK_SPIA_PATTERN,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x001FA55AUL);
+
+    assert(BoardSpi_EvaluateLoopbackStatus(
+               (BoardTest_U16)(BOARD_SPI_LOOPBACK_REQUIRED_MASK &
+                               ~BOARD_SPI_LOOPBACK_RX_MATCH),
+               BOARD_SPI_LOOPBACK_SPIB_PATTERN,
+               0U,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_SPI_LOOPBACK);
+}
+
+static void TestSpiExternalEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardSpi_EvaluateExternalStatus(
+               BOARD_SPI_EXTERNAL_REQUIRED_MASK,
+               BOARD_SPI_EXTERNAL_FAIL_NONE,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x00FF0000UL);
+
+    assert(BoardSpi_EvaluateExternalStatus(
+               (BoardTest_U16)(BOARD_SPI_EXTERNAL_REQUIRED_MASK &
+                               ~BOARD_SPI_EXTERNAL_FRAM_ID),
+               BOARD_SPI_EXTERNAL_FAIL_FRAM_ID,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_SPI_EXTERNAL);
+    assert(record.expectedMin == (float)BOARD_SPI_EXTERNAL_REQUIRED_MASK);
+    assert(record.expectedMax == (float)BOARD_SPI_EXTERNAL_DIAGNOSTIC_MASK);
+
+    assert(BoardSpi_EvaluateSpibFlashStatus(
+               BOARD_SPIB_FLASH_REQUIRED_MASK,
+               BOARD_SPIB_FLASH_FAIL_NONE,
+               BOARD_SPIB_FLASH_MANUFACTURER_ID,
+               BOARD_SPIB_FLASH_MEMORY_TYPE,
+               BOARD_SPIB_FLASH_CAPACITY_64_MBIT,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x0FEF4017UL);
+    assert(record.measuredValue == 23.0F);
+
+    assert(BoardSpi_EvaluateSpibFlashStatus(
+               (BoardTest_U16)(BOARD_SPIB_FLASH_REQUIRED_MASK &
+                               ~BOARD_SPIB_FLASH_ID_VALID),
+               BOARD_SPIB_FLASH_FAIL_ID,
+               0xEFU,
+               0x40U,
+               0x18U,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_SPIB_FLASH);
+
+    assert(BoardSpi_EvaluateSpibFramStatus(
+               BOARD_SPIB_FRAM_REQUIRED_MASK,
+               BOARD_SPIB_FRAM_FAIL_NONE,
+               0x00U,
+               BOARD_SPIB_FRAM_MANUFACTURER_ID,
+               BOARD_SPIB_FRAM_PRODUCT_ID_HIGH,
+               BOARD_SPIB_FRAM_PRODUCT_ID_LOW,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x1FFF0000UL);
+    assert(record.measuredValue == 9480.0F);
+    assert(BOARD_SPIB_FRAM_TEST_ADDRESS <= BOARD_SPIB_FRAM_MAX_ADDRESS);
+    assert((BOARD_SPIB_FRAM_TEST_XOR_PATTERN & 0x00FFU) != 0U);
+
+    assert(BoardSpi_EvaluateSpibFramStatus(
+               (BoardTest_U16)(BOARD_SPIB_FRAM_REQUIRED_MASK &
+                               ~BOARD_SPIB_FRAM_ID_VALID),
+               BOARD_SPIB_FRAM_FAIL_ID,
+               0x00U,
+               BOARD_SPIB_FRAM_MANUFACTURER_ID,
+               0x00U,
+               0x00U,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_SPIB_FRAM);
+}
+
+static void TestPwmSafetyEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardPwm_EvaluateSafetyStatus(
+               BOARD_PWM_SAFE_REQUIRED_MASK,
+               BOARD_EPWM_PAIR_COUNT,
+               0U,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x00FF0C00UL);
+    assert(record.measuredValue == (float)BOARD_PWM_SAFE_REQUIRED_MASK);
+
+    assert(BoardPwm_EvaluateSafetyStatus(
+               (BoardTest_U16)(BOARD_PWM_SAFE_REQUIRED_MASK &
+                               ~BOARD_PWM_SAFE_FORCE_LOW),
+               BOARD_EPWM_PAIR_COUNT,
+               1U,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_PWM_SAFE_CFG);
+}
+
+static void TestPwmDidoEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardPwm_EvaluateDidoStatus(
+               BOARD_PWM_DIDO_REQUIRED_MASK,
+               BOARD_PWM_DIDO_FAIL_NONE,
+               BOARD_PWM_DIDO_OUTPUT_MASK,
+               BOARD_PWM_DIDO_OUTPUT_MASK,
+               &record) == BOARD_TEST_RESULT_WARN);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x0FFF000FUL);
+    assert(record.measuredValue == (float)BOARD_PWM_DIDO_OUTPUT_MASK);
+
+    assert(BoardPwm_EvaluateDidoStatus(
+               0U,
+               BOARD_PWM_DIDO_FAIL_NOT_ARMED,
+               0U,
+               0x0001U,
+               &record) == BOARD_TEST_RESULT_SAFETY_LOCKED);
+    assert(record.errorCode == BOARD_TEST_ERROR_SAFETY_LOCK);
+
+    assert(BoardPwm_EvaluateDidoStatus(
+               BOARD_PWM_DIDO_STATUS_CONFIGURED,
+               BOARD_PWM_DIDO_FAIL_ENABLE_UNSAFE,
+               0U,
+               0x0001U,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_PWM_DIDO_EXTERNAL);
+
+    assert(BoardPwm_EvaluateDidoStatus(
+               BOARD_PWM_DIDO_REQUIRED_MASK,
+               BOARD_PWM_DIDO_FAIL_NONE,
+               0x0020U,
+               0x0020U,
+               &record) == BOARD_TEST_RESULT_WARN);
+    assert(record.rawValue == 0x0020000FUL);
+    assert(record.expectedMin == 32.0F);
+}
+
+static void TestEmifBasicEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardEmif_EvaluateBasicStatus(
+               BOARD_EMIF_BASIC_REQUIRED_MASK,
+               BOARD_EMIF_ASYNC_REQUIRED_MASK,
+               BOARD_EMIF_ASYNC_REQUIRED_MASK,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x00FF0303UL);
+
+    assert(BoardEmif_EvaluateBasicStatus(
+               (BoardTest_U16)(BOARD_EMIF_BASIC_REQUIRED_MASK &
+                               ~BOARD_EMIF_BASIC_EMIF2_ASYNC_CS2),
+               BOARD_EMIF_ASYNC_REQUIRED_MASK,
+               BOARD_EMIF_ASYNC_WIDTH_16,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_EMIF_BASIC);
+}
+
+static void TestEmifSramEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardEmif_EvaluateSramStatus(
+               BOARD_EMIF_SRAM_REQUIRED_MASK,
+               BOARD_EMIF_SRAM_FAIL_NONE,
+               0xA5A5U,
+               0xA5A5U,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x003F0000UL);
+
+    assert(BoardEmif_EvaluateSramStatus(
+               (BoardTest_U16)(BOARD_EMIF_SRAM_REQUIRED_MASK &
+                               ~BOARD_EMIF_SRAM_ADDRESS_PATTERN),
+               BOARD_EMIF_SRAM_FAIL_ADDRESS,
+               0x0010U,
+               0x0011U,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_EMIF_SRAM);
+}
+
+static void TestEthernetBasicEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardEthernet_EvaluateW5300BasicStatus(
+               BOARD_ETHERNET_W5300_REQUIRED_MASK,
+               BOARD_ETHERNET_W5300_MODE_EXPECTED,
+               BOARD_ETHERNET_W5300_RTR_EXPECTED,
+               BOARD_ETHERNET_W5300_RCR_EXPECTED,
+               BOARD_ETHERNET_W5300_MEM_EXPECTED,
+               BOARD_ETHERNET_W5300_MEM_EXPECTED,
+               0x0000U,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x007FB807UL);
+
+    assert(BoardEthernet_EvaluateW5300BasicStatus(
+               (BoardTest_U16)(BOARD_ETHERNET_W5300_REQUIRED_MASK &
+                               ~BOARD_ETHERNET_W5300_RTR_READBACK),
+               BOARD_ETHERNET_W5300_MODE_EXPECTED,
+               0U,
+               BOARD_ETHERNET_W5300_RCR_EXPECTED,
+               BOARD_ETHERNET_W5300_MEM_EXPECTED,
+               BOARD_ETHERNET_W5300_MEM_EXPECTED,
+               0xFFFFU,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_ETHERNET);
+}
+
+static void TestEthernetSocketEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardEthernet_EvaluateW5300SocketStatus(
+               BOARD_ETHERNET_SOCKET_REQUIRED_MASK,
+               0x0021U,
+               12001U,
+               0x1300U,
+               0x1400U,
+               0x0000U,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x003F1314UL);
+
+    assert(BoardEthernet_EvaluateW5300SocketStatus(
+               (BoardTest_U16)(BOARD_ETHERNET_SOCKET_REQUIRED_MASK &
+                               ~BOARD_ETHERNET_SOCKET_LISTEN),
+               0x0021U,
+               12001U,
+               0x1300U,
+               0x0000U,
+               0x0000U,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_ETHERNET_SOCKET);
+}
+
+static void TestEthernetTcpLinkEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardEthernet_EvaluateW5300TcpLinkStatus(
+               BOARD_ETHERNET_TCP_LINK_REQUIRED_MASK,
+               0x1400U,
+               0x1701U,
+               0x0000U,
+               49152U,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x002F1700UL);
+
+    assert(BoardEthernet_EvaluateW5300TcpLinkStatus(
+               (BoardTest_U16)(BOARD_ETHERNET_TCP_LINK_REQUIRED_MASK &
+                               ~BOARD_ETHERNET_TCP_LINK_ESTABLISHED),
+               0x1400U,
+               0x1400U,
+               0x0000U,
+               0U,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_ETHERNET_TCP_LINK);
+}
+
+static void TestEthernetTcpEchoEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardEthernet_EvaluateW5300TcpEchoStatus(
+               BOARD_ETHERNET_TCP_ECHO_REQUIRED_MASK,
+               0x1710U,
+               4U,
+               8192U,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x01FF1704UL);
+
+    assert(BoardEthernet_EvaluateW5300TcpEchoStatus(
+               (BoardTest_U16)(BOARD_ETHERNET_TCP_ECHO_REQUIRED_MASK &
+                               ~BOARD_ETHERNET_TCP_ECHO_RX_MATCH),
+               0x1704U,
+               4U,
+               8192U,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_ETHERNET_TCP_ECHO);
+}
+
+static void TestEthernetTcpStabilityEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardEthernet_EvaluateW5300TcpStabilityStatus(
+               BOARD_ETHERNET_TCP_STABILITY_REQUIRED_MASK,
+               0x1710U,
+               5U,
+               5U,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x03FF1705UL);
+
+    assert(BoardEthernet_EvaluateW5300TcpStabilityStatus(
+               (BoardTest_U16)
+               (BOARD_ETHERNET_TCP_STABILITY_REQUIRED_MASK &
+                ~BOARD_ETHERNET_TCP_STABILITY_TARGET_REACHED),
+               0x1710U,
+               4U,
+               5U,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_ETHERNET_TCP_STABILITY);
+}
+
+static void TestFpgaEmif2Evaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardFpga_EvaluateEmif2Status(
+               BOARD_FPGA_EMIF2_REQUIRED_MASK,
+               BOARD_FPGA_FAIL_NONE,
+               BOARD_FPGA_TEST1_EXPECTED,
+               BOARD_FPGA_TEST2_EXPECTED,
+               BOARD_FPGA_TEST3_EXPECTED,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x001B0000UL);
+
+    assert(BoardFpga_EvaluateEmif2Status(
+               BOARD_FPGA_EMIF2_REQUIRED_MASK,
+               BOARD_FPGA_FAIL_NONE,
+               0x00FFU,
+               BOARD_FPGA_TEST2_EXPECTED,
+               BOARD_FPGA_TEST3_EXPECTED,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x001B0000UL);
+
+    assert(BoardFpga_EvaluateEmif2Status(
+               (BoardTest_U16)(BOARD_FPGA_EMIF2_REQUIRED_MASK &
+                               ~BOARD_FPGA_EMIF2_TEST2_MATCH),
+               BOARD_FPGA_FAIL_TEST2,
+               BOARD_FPGA_TEST1_EXPECTED,
+               0U,
+               BOARD_FPGA_TEST3_EXPECTED,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_FPGA_EMIF2_BASIC);
+}
+
+static void TestDidoFpgaDoEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardDido_EvaluateFpgaDoStatus(
+               BOARD_DIDO_STATUS_CONFIGURED |
+               BOARD_DIDO_STATUS_MAGIC_VALID |
+               BOARD_DIDO_STATUS_CHANNEL_1_TOGGLED |
+               BOARD_DIDO_STATUS_CHANNEL_2_TOGGLED |
+               BOARD_DIDO_STATUS_CHANNEL_3_TOGGLED |
+               BOARD_DIDO_STATUS_OUTPUTS_DISABLED,
+               BOARD_DIDO_FAIL_NONE,
+               BOARD_DIDO_DEFAULT_CHANNEL_MASK,
+               &record) == BOARD_TEST_RESULT_WARN);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x003F0000UL);
+
+    assert(BoardDido_EvaluateFpgaDoStatus(
+               0U,
+               BOARD_DIDO_FAIL_NOT_ARMED,
+               BOARD_DIDO_DEFAULT_CHANNEL_MASK,
+               &record) == BOARD_TEST_RESULT_SAFETY_LOCKED);
+    assert(record.errorCode == BOARD_TEST_ERROR_SAFETY_LOCK);
+
+    assert(BoardDido_EvaluateFpgaDoStatus(
+               BOARD_DIDO_STATUS_CONFIGURED,
+               BOARD_DIDO_FAIL_MAGIC,
+               BOARD_DIDO_CHANNEL_1,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_DIDO_EXTERNAL);
+}
+
+static void TestDidoDspDoEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardDido_EvaluateDspDoStatus(
+               BOARD_DIDO_STATUS_CONFIGURED |
+               BOARD_DIDO_STATUS_CHANNEL_1_TOGGLED |
+               BOARD_DIDO_STATUS_CHANNEL_2_TOGGLED |
+               BOARD_DIDO_STATUS_CHANNEL_3_TOGGLED |
+               BOARD_DIDO_STATUS_OUTPUTS_DISABLED,
+               BOARD_DIDO_FAIL_NONE,
+               BOARD_DIDO_DEFAULT_CHANNEL_MASK,
+               &record) == BOARD_TEST_RESULT_WARN);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x003D0000UL);
+
+    assert(BoardDido_EvaluateDspDoStatus(
+               BOARD_DIDO_STATUS_CONFIGURED |
+               BOARD_DIDO_STATUS_CHANNEL_1_TOGGLED |
+               BOARD_DIDO_STATUS_OUTPUTS_DISABLED,
+               BOARD_DIDO_FAIL_NONE,
+               BOARD_DIDO_DEFAULT_CHANNEL_MASK,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_DIDO_EXTERNAL);
+}
+
+static void TestDriverResetDoEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardDido_EvaluateDriverResetStatus(
+               BOARD_DRIVER_RESET_REQUIRED_STATUS,
+               BOARD_DIDO_FAIL_NONE,
+               BOARD_DRIVER_RESET_CHANNEL_URST1,
+               &record) == BOARD_TEST_RESULT_WARN);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x000F0000UL);
+    assert(record.expectedMin == 1.0F);
+
+    assert(BoardDido_EvaluateDriverResetStatus(
+               BOARD_DRIVER_RESET_STATUS_CONFIGURED,
+               BOARD_DIDO_FAIL_CONFIG,
+               BOARD_DRIVER_RESET_CHANNEL_DRST1,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_DRIVER_RESET_DO_EXTERNAL);
+
+    assert(BoardDido_EvaluateDriverResetStatus(
+               0U,
+               BOARD_DIDO_FAIL_NOT_ARMED,
+               BOARD_DRIVER_RESET_CHANNEL_URST2,
+               &record) == BOARD_TEST_RESULT_SAFETY_LOCKED);
+    assert(record.errorCode == BOARD_TEST_ERROR_SAFETY_LOCK);
+}
+
+static void TestHdoFpgaEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardHdo_EvaluateFpgaStatus(
+               BOARD_HDO_STATUS_CONFIGURED |
+               BOARD_HDO_STATUS_MAGIC_VALID |
+               BOARD_HDO_STATUS_CHANNEL_1_TOGGLED |
+               BOARD_HDO_STATUS_CHANNEL_2_TOGGLED |
+               BOARD_HDO_STATUS_OUTPUTS_DISABLED,
+               BOARD_HDO_FAIL_NONE,
+               BOARD_HDO_DEFAULT_CHANNEL_MASK,
+               &record) == BOARD_TEST_RESULT_WARN);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x001F0000UL);
+
+    assert(BoardHdo_EvaluateFpgaStatus(
+               0U,
+               BOARD_HDO_FAIL_NOT_ARMED,
+               BOARD_HDO_DEFAULT_CHANNEL_MASK,
+               &record) == BOARD_TEST_RESULT_SAFETY_LOCKED);
+    assert(record.errorCode == BOARD_TEST_ERROR_SAFETY_LOCK);
+
+    assert(BoardHdo_EvaluateFpgaStatus(
+               BOARD_HDO_STATUS_CONFIGURED,
+               BOARD_HDO_FAIL_MAGIC,
+               BOARD_HDO_CHANNEL_1,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_HDO_EXTERNAL);
+}
+
+static void TestDiFpgaEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BOARD_DI_FPGA_INPUT_ADDR == 0x00002000UL);
+    assert(BOARD_DI_EDI1_BIT == 0x0001U);
+    assert(BOARD_DI_EDI6_BIT == 0x0020U);
+    assert(BOARD_DI_HDI1_BIT == 0x0040U);
+    assert(BOARD_DI_HDI2_BIT == 0x0080U);
+
+    assert(BoardDi_EvaluateFpgaStatus(
+               BOARD_DI_REQUIRED_STATUS_MASK,
+               BOARD_DI_FAIL_NONE,
+               BOARD_DI_DEFAULT_CHANNEL_MASK,
+               BOARD_DI_INPUT_MASK,
+               BOARD_DI_INPUT_MASK,
+               BOARD_DI_INPUT_MASK,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x00FF00FFUL);
+    assert(record.measuredValue == 255.0F);
+
+    assert(BoardDi_EvaluateFpgaStatus(
+               BOARD_DI_REQUIRED_STATUS_MASK,
+               BOARD_DI_FAIL_NONE,
+               BOARD_DI_EDI1_BIT | BOARD_DI_HDI2_BIT,
+               BOARD_DI_EDI1_BIT | BOARD_DI_HDI2_BIT,
+               BOARD_DI_EDI1_BIT | BOARD_DI_HDI2_BIT,
+               BOARD_DI_EDI1_BIT | BOARD_DI_HDI2_BIT,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.expectedMin == 129.0F);
+
+    assert(BoardDi_EvaluateFpgaStatus(
+               BOARD_DI_STATUS_CONFIGURED |
+               BOARD_DI_STATUS_MAGIC_VALID |
+               BOARD_DI_STATUS_INACTIVE_SEEN,
+               BOARD_DI_FAIL_TIMEOUT,
+               BOARD_DI_DEFAULT_CHANNEL_MASK,
+               BOARD_DI_INPUT_MASK,
+               0U,
+               0U,
+               &record) == BOARD_TEST_RESULT_TIMEOUT);
+    assert(record.errorCode == BOARD_TEST_ERROR_DI_EXTERNAL);
+
+    assert(BoardDi_EvaluateFpgaStatus(
+               BOARD_DI_STATUS_CONFIGURED,
+               BOARD_DI_FAIL_MAGIC,
+               BOARD_DI_DEFAULT_CHANNEL_MASK,
+               0U,
+               0U,
+               0U,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode == BOARD_TEST_ERROR_DI_EXTERNAL);
+}
+
+static void TestDiDspEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardDi_EvaluateDspStatus(
+               BOARD_DI_DSP_REQUIRED_STATUS_MASK,
+               BOARD_DI_FAIL_NONE,
+               BOARD_DI_DSP_DEFAULT_CHANNEL_MASK,
+               BOARD_DI_DSP_INPUT_MASK,
+               BOARD_DI_DSP_INPUT_MASK,
+               BOARD_DI_DSP_INPUT_MASK,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x00070007UL);
+    assert(record.measuredValue == 7.0F);
+
+    assert(BoardDi_EvaluateDspStatus(
+               BOARD_DI_STATUS_CONFIGURED |
+               BOARD_DI_STATUS_INACTIVE_SEEN,
+               BOARD_DI_FAIL_TIMEOUT,
+               BOARD_DI_DSP_DEFAULT_CHANNEL_MASK,
+               BOARD_DI_DSP_INPUT_MASK,
+               0U,
+               0U,
+               &record) == BOARD_TEST_RESULT_TIMEOUT);
+    assert(record.errorCode == BOARD_TEST_ERROR_DI_EXTERNAL);
+}
+
+static void TestDriverFaultDiEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardDi_EvaluateDriverFaultStatus(
+               BOARD_DI_DSP_REQUIRED_STATUS_MASK,
+               BOARD_DI_FAIL_NONE,
+               BOARD_DI_DRIVER_FAULT_DEFAULT_CHANNEL_MASK,
+               BOARD_DI_DRIVER_FAULT_INPUT_MASK,
+               BOARD_DI_DRIVER_FAULT_INPUT_MASK,
+               BOARD_DI_DRIVER_FAULT_INPUT_MASK,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x000F000FUL);
+    assert(record.measuredValue == 15.0F);
+
+    assert(BoardDi_EvaluateDriverFaultStatus(
+               BOARD_DI_STATUS_CONFIGURED |
+               BOARD_DI_STATUS_INACTIVE_SEEN,
+               BOARD_DI_FAIL_TIMEOUT,
+               BOARD_DI_DRIVER_FAULT_DEFAULT_CHANNEL_MASK,
+               BOARD_DI_DRIVER_FAULT_INPUT_MASK,
+               0x0007U,
+               0x0007U,
+               &record) == BOARD_TEST_RESULT_TIMEOUT);
+    assert(record.errorCode ==
+           BOARD_TEST_ERROR_DRIVER_FAULT_DI_EXTERNAL);
+}
+
+static void TestDriverFaultGroupCapture(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardDi_EvaluateDriverFaultStatus(
+        BOARD_DI_DSP_REQUIRED_STATUS_MASK, BOARD_DI_FAIL_NONE,
+        BOARD_DI_DRIVER_FAULT_GROUP_1_MASK, 3U, 3U, 3U,
+        &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.expectedMin == 3.0F);
+    assert(record.expectedMax == 3.0F);
+    assert(BoardDi_EvaluateDriverFaultStatus(
+        BOARD_DI_DSP_REQUIRED_STATUS_MASK, BOARD_DI_FAIL_NONE,
+        BOARD_DI_DRIVER_FAULT_GROUP_2_MASK, 12U, 12U, 12U,
+        &record) == BOARD_TEST_RESULT_PASS);
+
+    /* One good input does not hide a broken input in the selected group. */
+    assert(BoardDi_EvaluateDriverFaultStatus(
+        BOARD_DI_DSP_REQUIRED_STATUS_MASK, BOARD_DI_FAIL_NONE,
+        BOARD_DI_DRIVER_FAULT_GROUP_1_MASK, 3U, 3U, 1U,
+        &record) == BOARD_TEST_RESULT_FAIL);
+    /* Signals from the unselected connector do not satisfy the selected group. */
+    assert(BoardDi_EvaluateDriverFaultStatus(
+        BOARD_DI_DSP_REQUIRED_STATUS_MASK, BOARD_DI_FAIL_NONE,
+        BOARD_DI_DRIVER_FAULT_GROUP_2_MASK, 15U, 15U, 3U,
+        &record) == BOARD_TEST_RESULT_FAIL);
+
+    /* Ordinary three-channel DI remains an all-channel test. */
+    assert(BoardDi_EvaluateDspStatus(
+        BOARD_DI_DSP_REQUIRED_STATUS_MASK, BOARD_DI_FAIL_NONE,
+        7U, 7U, 7U, 3U, &record) == BOARD_TEST_RESULT_FAIL);
+    assert(BoardDi_EvaluateDriverFaultStatus(
+        BOARD_DI_DSP_REQUIRED_STATUS_MASK, BOARD_DI_FAIL_CONFIG,
+        15U, 1U, 1U, 1U, &record) == BOARD_TEST_RESULT_FAIL);
+    assert(BoardDi_EvaluateDriverFaultStatus(
+        0U, BOARD_DI_FAIL_NONE,
+        15U, 1U, 1U, 1U, &record) == BOARD_TEST_RESULT_FAIL);
+    assert(BoardDi_EvaluateDriverFaultStatus(
+        BOARD_DI_DSP_REQUIRED_STATUS_MASK, BOARD_DI_FAIL_NONE,
+        0U, 1U, 1U, 1U, &record) == BOARD_TEST_RESULT_FAIL);
+    assert(BoardDi_EvaluateDriverFaultStatus(
+        BOARD_DI_DSP_REQUIRED_STATUS_MASK, BOARD_DI_FAIL_NONE,
+        0x001FU, 1U, 1U, 1U, &record) == BOARD_TEST_RESULT_FAIL);
+    assert(BoardDi_EvaluateDriverFaultStatus(
+        BOARD_DI_DSP_REQUIRED_STATUS_MASK, BOARD_DI_FAIL_NONE,
+        2U, 1U, 1U, 1U, &record) == BOARD_TEST_RESULT_FAIL);
+}
+
+static void TestProtectionFaultDiEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardDi_EvaluateProtectionFaultStatus(
+               BOARD_DI_DSP_REQUIRED_STATUS_MASK,
+               BOARD_DI_FAIL_NONE,
+               BOARD_DI_PROTECTION_FAULT_DEFAULT_CHANNEL_MASK,
+               BOARD_DI_PROTECTION_FAULT_INPUT_MASK,
+               BOARD_DI_PROTECTION_FAULT_INPUT_MASK,
+               BOARD_DI_PROTECTION_FAULT_INPUT_MASK,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x000F000FUL);
+    assert(record.measuredValue == 15.0F);
+
+    assert(BoardDi_EvaluateProtectionFaultStatus(
+               BOARD_DI_STATUS_CONFIGURED |
+               BOARD_DI_STATUS_INACTIVE_SEEN,
+               BOARD_DI_FAIL_TIMEOUT,
+               BOARD_DI_PROTECTION_FAULT_DEFAULT_CHANNEL_MASK,
+               BOARD_DI_PROTECTION_FAULT_INPUT_MASK,
+               0x0007U,
+               0x0007U,
+               &record) == BOARD_TEST_RESULT_TIMEOUT);
+    assert(record.errorCode ==
+           BOARD_TEST_ERROR_PROTECTION_FAULT_DI_EXTERNAL);
+}
+
+static void TestProtectionThresholdEvaluation(void)
+{
+    BoardTest_Record record;
+
+    assert(BoardAdc_EvaluateProtectionThreshold(
+               BOARD_ADC_PROTECTION_REQUIRED_STATUS_MASK,
+               BOARD_ADC_PROTECTION_FAIL_NONE,
+               BOARD_ADC_PROTECTION_SELECTION_OC_HIGH_BASE,
+               BOARD_DI_PROTECTION_OC1_BIT,
+               BOARD_DI_PROTECTION_FAULT_INPUT_MASK,
+               4.9F,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.errorCode == BOARD_TEST_ERROR_NONE);
+    assert(record.rawValue == 0x0BFF010FUL);
+    assert(record.expectedMin == BOARD_ADC_PROTECTION_OC_HIGH_THRESHOLD_V);
+    assert(record.expectedMax == BOARD_ADC_PROTECTION_TERMINAL_MAX_V);
+
+    assert(BoardAdc_EvaluateProtectionThreshold(
+               BOARD_ADC_PROTECTION_REQUIRED_STATUS_MASK,
+               BOARD_ADC_PROTECTION_FAIL_NONE,
+               BOARD_ADC_PROTECTION_SELECTION_OC_LOW_BASE,
+               BOARD_DI_PROTECTION_OC1_BIT,
+               BOARD_DI_PROTECTION_FAULT_INPUT_MASK,
+               0.1F,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.expectedMin == 0.0F);
+    assert(record.expectedMax == BOARD_ADC_PROTECTION_OC_LOW_THRESHOLD_V);
+
+    assert(BoardAdc_EvaluateProtectionThreshold(
+               BOARD_ADC_PROTECTION_REQUIRED_STATUS_MASK,
+               BOARD_ADC_PROTECTION_FAIL_NONE,
+               BOARD_ADC_PROTECTION_SELECTION_UOV_BASE,
+               BOARD_DI_PROTECTION_UOV1_BIT,
+               BOARD_DI_PROTECTION_FAULT_INPUT_MASK,
+               4.0F,
+               &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.expectedMin == BOARD_ADC_PROTECTION_UOV_THRESHOLD_V);
+    assert((record.rawValue >> 28U) ==
+           BOARD_ADC_PROTECTION_SELECTION_UOV_BASE);
+
+    assert(BoardAdc_EvaluateProtectionThreshold(
+               (BoardTest_U16)(BOARD_ADC_PROTECTION_REQUIRED_STATUS_MASK &
+                               ~BOARD_ADC_PROTECTION_STATUS_XINT_TRIGGERED),
+               BOARD_ADC_PROTECTION_FAIL_TIMEOUT,
+               BOARD_ADC_PROTECTION_SELECTION_UOV_BASE,
+               BOARD_DI_PROTECTION_UOV1_BIT,
+               BOARD_DI_PROTECTION_FAULT_INPUT_MASK,
+               4.0F,
+               &record) == BOARD_TEST_RESULT_TIMEOUT);
+    assert(record.errorCode ==
+           BOARD_TEST_ERROR_PROTECTION_FAULT_DI_EXTERNAL);
+
+    assert(BoardAdc_EvaluateProtectionThreshold(
+               (BoardTest_U16)(BOARD_ADC_PROTECTION_REQUIRED_STATUS_MASK &
+                               ~(BOARD_ADC_PROTECTION_STATUS_FAULT_ASSERTED |
+                                 BOARD_ADC_PROTECTION_STATUS_BREAK_ASSERTED |
+                                 BOARD_ADC_PROTECTION_STATUS_XINT_TRIGGERED)),
+               BOARD_ADC_PROTECTION_FAIL_RESPONSE,
+               BOARD_ADC_PROTECTION_SELECTION_OC_HIGH_BASE,
+               0U,
+               BOARD_DI_PROTECTION_FAULT_INPUT_MASK,
+               4.9F,
+               &record) == BOARD_TEST_RESULT_FAIL);
+    assert(record.errorCode ==
+           BOARD_TEST_ERROR_PROTECTION_FAULT_DI_EXTERNAL);
+
+    assert(BoardAdc_EvaluateProtectionThreshold(
+               BOARD_ADC_PROTECTION_REQUIRED_STATUS_MASK,
+               BOARD_ADC_PROTECTION_FAIL_NONE,
+               BOARD_ADC_PROTECTION_SELECTION_COUNT,
+               0U,
+               0U,
+               4.0F,
+               &record) == BOARD_TEST_RESULT_FAIL);
+}
+
+int main(void)
+{
+    TestInitIsSafe();
+    TestBoardProfiles();
+    TestSingleI2cPasses();
+    TestSingleFpgaProbePasses();
+    TestSingleDidoUsesExternalStage();
+    TestSinglePwmDidoUsesExternalStage();
+    TestSingleDriverFaultDiUsesExternalStage();
+    TestProtectionAndResetUseExternalStage();
+    TestSingleHdoUsesExternalStage();
+    TestSingleDiUsesExternalStage();
+    TestDangerousTestIsLocked();
+    TestSingleTestRespectsStage();
+    TestAutoSequenceFinishes();
+    TestExternalConnectedStage();
+    TestHpdInjectionStage();
+    TestOutlineLimits();
+    TestConfirmedPinMap();
+    TestProgramLedEvaluation();
+    TestSystemMaskEvaluation();
+    TestSystemTimerEvaluation();
+    TestTmp116Evaluation();
+    TestSciLoopbackEvaluation();
+    TestSciRs485ExternalEvaluation();
+    TestSciRs422ExternalEvaluation();
+    TestSciaHandheldExternalEvaluation();
+    TestCanLoopbackEvaluation();
+    TestCanExternalEvaluation();
+    TestCanDynamicPinConfiguration();
+    TestScibDynamicPinConfiguration();
+    TestRs422DynamicPinConfiguration();
+    TestW5500BootPinCompatibility();
+    TestAdcBasicEvaluation();
+    TestSpiLoopbackEvaluation();
+    TestSpiExternalEvaluation();
+    TestPwmSafetyEvaluation();
+    TestPwmDidoEvaluation();
+    TestEmifBasicEvaluation();
+    TestEmifSramEvaluation();
+    TestEthernetBasicEvaluation();
+    TestEthernetSocketEvaluation();
+    TestEthernetTcpLinkEvaluation();
+    TestEthernetTcpEchoEvaluation();
+    TestEthernetTcpStabilityEvaluation();
+    TestFpgaEmif2Evaluation();
+    TestDidoFpgaDoEvaluation();
+    TestDidoDspDoEvaluation();
+    TestDriverResetDoEvaluation();
+    TestHdoFpgaEvaluation();
+    TestDiFpgaEvaluation();
+    TestDiDspEvaluation();
+    TestDriverFaultDiEvaluation();
+    TestDriverFaultGroupCapture();
+    TestProtectionFaultDiEvaluation();
+    TestProtectionThresholdEvaluation();
+    puts("board_test: all tests passed");
+    return 0;
+}

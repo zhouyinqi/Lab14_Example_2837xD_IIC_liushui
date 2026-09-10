@@ -7,11 +7,14 @@
 
 #include <QHash>
 #include <QMainWindow>
+#include <QPointer>
 #include <QVector>
 
 class QComboBox;
+class QDoubleSpinBox;
 class QLabel;
 class QLineEdit;
+class QMessageBox;
 class QPlainTextEdit;
 class QPushButton;
 class QTableWidget;
@@ -27,6 +30,8 @@ public:
     explicit MainWindow(QWidget *parent = nullptr);
 
 private:
+    friend class MainWindowTests;
+
     enum class RefreshScope : quint8 {
         None,
         Board,
@@ -48,12 +53,21 @@ private:
 
     void addTest(quint16 id, const QString &name, RefreshScope scope);
     void prepareResultRefresh(RefreshScope scope);
+    void prepareSingleTestRefresh(RefreshScope scope, quint16 testId);
     void updateSingleTestChoices(RefreshScope scope);
     void requestNextRecord();
     void beginRecordRefresh(RefreshScope scope);
     void updateRecord(const DspTestProtocol::Response &response);
     void updateStatus(const DspTestProtocol::Response &response);
     void updateBoardInfo(const DspTestProtocol::Response &response);
+    void resetDisplayedResultsForBoardChange();
+    void beginTestAvailabilityRefresh();
+    void requestNextTestAvailability();
+    void updateTestAvailability(
+        const DspTestProtocol::Response &response);
+    void resetTestAvailability();
+    bool isTestRunnable(quint16 testId) const;
+    bool isTestEnabledInAuto(quint16 testId) const;
     void updateBoardProfileChoices(
         const DspTestProtocol::Response &response);
     void updateTestCommandAvailability();
@@ -77,7 +91,14 @@ private:
     bool isSerialExternalTest(quint16 testId) const;
     QString activeSerialName() const;
     void requestEdoManualConfirmation();
-    void setEdoManualResult(bool passed);
+    void showManualOutputConfirmation(quint16 testId,
+                                      const QString &title,
+                                      const QString &prompt,
+                                      const QString &testName);
+    void cancelManualOutputConfirmation();
+    void setManualOutputResult(quint16 testId,
+                               bool passed,
+                               const QString &testName);
     void updateResultAppearance(QTableWidgetItem *item,
                                 DspTestProtocol::Result result,
                                 bool manualConfirmation) const;
@@ -85,6 +106,10 @@ private:
     void appendLog(LogChannel channel, const QString &message);
     void appendScopeLog(RefreshScope scope, const QString &message);
     bool selectedTestIsOutput() const;
+    void updateSingleTestParameterControls();
+    void updateDriverFaultChannelStatus(quint16 monitoredMask,
+                                        quint16 verifiedMask,
+                                        bool resultAvailable);
 
     DspTcpClient m_client;
     EthernetTcpTestClient m_ethernetTcpTestClient;
@@ -95,11 +120,21 @@ private:
     QVector<quint16> m_hpdRecordIds;
     QVector<quint16> m_activeRecordIds;
     QHash<quint16, RecordLocation> m_recordRows;
+    QHash<quint16, DspTestProtocol::TestAvailability> m_testAvailability;
+    QHash<quint16, bool> m_testEnabledInAuto;
+    QVector<quint16> m_testAvailabilityQueryIds;
+    int m_nextTestAvailabilityIndex = -1;
+    bool m_testAvailabilityReady = false;
+    quint16 m_availabilityProfileId = 0;
+    quint16 m_availabilityHardwareRevision = 0;
+    quint16 m_availabilityPinMapRevision = 0;
+    quint32 m_availabilityCapabilities = 0;
     int m_nextRecordIndex = -1;
     RefreshScope m_refreshScope = RefreshScope::None;
     bool m_waitingForTestReconnect = false;
     bool m_edoManualConfirmationExpected = false;
     bool m_edoManualConfirmationAvailable = false;
+    QPointer<QMessageBox> m_manualOutputDialog;
     bool m_scibAutomaticTestRequested = false;
     bool m_scibAutomaticTestStarted = false;
     bool m_scibSingleTestRequested = false;
@@ -113,7 +148,20 @@ private:
     bool m_singleTestStartStatusRequested = false;
     bool m_singleTestObservedRunning = false;
     bool m_singleTestRecordRefreshInFlight = false;
+    bool m_liveRecordRequestPending = false;
     bool m_waitingForStopCompletion = false;
+    bool m_adcInjectionConfigurationPending = false;
+    quint16 m_adcInjectionPendingTestId = DspTestProtocol::InvalidTestId;
+    QString m_pwmDidoPendingChannelText;
+    int m_pwmDidoLastLiveLevel = -1;
+    quint16 m_driverFaultPendingMask = 0U;
+    quint8 m_protectionPendingSelection = 0U;
+    QString m_protectionPendingText;
+    quint16 m_protectionLivePhase = 0U;
+    bool m_protectionRecordFormatMismatchReported = false;
+    QString m_lastProtectionFinalLogKey;
+    QString m_driverResetPendingChannelText;
+    int m_driverResetLastLiveLevel = -1;
     QVector<quint16> m_ethernetTcpPendingTests;
     quint16 m_ethernetTcpCurrentTestId = DspTestProtocol::InvalidTestId;
     bool m_ethernetTcpSequenceActive = false;
@@ -133,6 +181,11 @@ private:
     DspTestProtocol::BoardProfileState m_boardProfileState =
         DspTestProtocol::BoardProfileState::BootSafe;
     quint16 m_boardProfileId = 0;
+    bool m_resultBoardContextValid = false;
+    quint16 m_resultBoardProfileId = 0;
+    quint16 m_resultBoardHardwareRevision = 0;
+    quint16 m_resultBoardPinMapRevision = 0;
+    quint32 m_resultBoardCapabilities = 0;
 
     QLineEdit *m_hostEdit = nullptr;
     QLineEdit *m_portEdit = nullptr;
@@ -156,6 +209,23 @@ private:
     QComboBox *m_singleTestBox = nullptr;
     QComboBox *m_singleStageBox = nullptr;
     QPushButton *m_singleButton = nullptr;
+    QWidget *m_adcInjectionPanel = nullptr;
+    QLabel *m_adcInjectionSelectionLabel = nullptr;
+    QComboBox *m_adcInjectionChannelBox = nullptr;
+    QDoubleSpinBox *m_adcInjectionVoltageBox = nullptr;
+    QDoubleSpinBox *m_adcInjectionToleranceBox = nullptr;
+    QWidget *m_pwmDidoPanel = nullptr;
+    QComboBox *m_pwmDidoChannelBox = nullptr;
+    QLabel *m_pwmDidoLiveValueLabel = nullptr;
+    QWidget *m_driverFaultPanel = nullptr;
+    QComboBox *m_driverFaultGroupBox = nullptr;
+    QLabel *m_driverFaultStatusLabel = nullptr;
+    QWidget *m_protectionPanel = nullptr;
+    QComboBox *m_protectionSelectionBox = nullptr;
+    QLabel *m_protectionStatusLabel = nullptr;
+    QWidget *m_driverResetPanel = nullptr;
+    QComboBox *m_driverResetChannelBox = nullptr;
+    QLabel *m_driverResetLiveValueLabel = nullptr;
     QTableWidget *m_boardRecordsTable = nullptr;
     QTableWidget *m_externalRecordsTable = nullptr;
     QTableWidget *m_hpdRecordsTable = nullptr;
@@ -163,4 +233,6 @@ private:
     QPlainTextEdit *m_log = nullptr;
     QPushButton *m_exportLogButton = nullptr;
     QTimer *m_pollTimer = nullptr;
+    QTimer *m_pwmDidoLiveTimer = nullptr;
+    QTimer *m_protectionResetLiveTimer = nullptr;
 };

@@ -16,6 +16,7 @@ public:
 
     bool isConnected() const;
     void connectToDevice(const QString &host, quint16 port);
+    void reconnectToDevice(const QString &host, quint16 port);
     void disconnectFromDevice();
 
     void ping();
@@ -24,7 +25,8 @@ public:
     void startHpdAuto(bool realAdcInput);
     void startSingle(quint16 testId,
                      DspTestProtocol::Stage stage,
-                     bool outputArmed);
+                     bool outputArmed,
+                     quint8 singleSelection = 0U);
     void stop();
     void selectBoardProfile(quint16 boardProfileId);
     void confirmBoardProfile();
@@ -32,6 +34,10 @@ public:
     void requestStatus();
     void requestRecord(quint16 testId);
     void requestBoardInfo();
+    void requestTestAvailability(quint16 testId);
+    void configureAdcInjection(quint8 signalId,
+                               quint16 expectedMillivolts,
+                               quint16 toleranceMillivolts);
 
 signals:
     void connectionChanged(bool connected, const QString &detail);
@@ -47,6 +53,11 @@ private:
     void sendNextRequest();
     void clearPendingRequests();
     void processIncomingData();
+    void startConnection(const QString &host, quint16 port,
+                         bool resetReconnectLimit);
+    void scheduleAutomaticReconnect();
+
+    static constexpr int MaxAutomaticReconnectAttempts = 10;
 
     QTcpSocket m_socket;
     QTimer m_reconnectTimer;
@@ -57,6 +68,8 @@ private:
     QString m_host;
     quint16 m_port = 0;
     bool m_autoReconnect = false;
+    bool m_reconnectLimitReached = false;
+    int m_automaticReconnectAttempts = 0;
     bool m_requestInFlight = false;
     quint16 m_sequence = 1;
 };

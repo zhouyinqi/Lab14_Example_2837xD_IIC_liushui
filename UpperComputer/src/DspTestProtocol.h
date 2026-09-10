@@ -22,7 +22,9 @@ enum class Command : quint8 {
     ClearBoardProfile = 0x17,
     GetStatus = 0x20,
     GetRecord = 0x21,
-    GetBoardInfo = 0x22
+    GetBoardInfo = 0x22,
+    GetTestAvailability = 0x23,
+    ConfigureAdcInjection = 0x24
 };
 
 enum class EthernetInterface : quint16 {
@@ -67,7 +69,19 @@ enum class ProtocolStatus : quint16 {
     ProfileError = 7
 };
 
+enum class TestAvailability : quint16 {
+    NotAvailable = 0,
+    PendingDevelopment = 1,
+    PendingValidation = 2,
+    Testable = 3
+};
+
 constexpr quint8 FlagOutputArmed = 0x01;
+constexpr quint8 FlagPwmChannelShift = 1;
+constexpr quint8 FlagPwmChannelMask = 0x1E;
+constexpr quint8 FlagSingleSelectionShift = 1;
+constexpr quint8 FlagSingleSelectionMask = 0x1E;
+constexpr quint16 AdcToleranceStepMillivolts = 10;
 constexpr quint16 CommunicationStandbyCan = 0x0001;
 constexpr quint16 CommunicationStandbyScib = 0x0002;
 constexpr quint16 CommunicationStandbyEthernet = 0x0004;
@@ -98,6 +112,11 @@ struct Response {
     quint32 boardCapabilities = 0;
     EthernetInterface boardEthernetInterface = EthernetInterface::None;
     BoardProfileState boardProfileState = BoardProfileState::BootSafe;
+    TestAvailability testAvailability = TestAvailability::NotAvailable;
+    quint16 testDescriptorCapabilities = 0;
+    quint16 testStageMask = 0;
+    quint16 testRisk = 0;
+    bool testEnabledInAuto = false;
 };
 
 QByteArray makeRequest(Command command,
@@ -109,6 +128,7 @@ bool parseResponse(const QByteArray &frame, Response *response, QString *error);
 
 QString resultText(Result result);
 QString protocolStatusText(ProtocolStatus status);
+QString testAvailabilityText(TestAvailability availability);
 quint16 crc16(const QByteArray &data, int length);
 
 } // namespace DspTestProtocol
