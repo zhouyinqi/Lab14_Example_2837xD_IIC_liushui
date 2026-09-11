@@ -193,6 +193,10 @@ BoardTest_U16 BoardSci_ResolveScibPinConfiguration(
     const BoardProfile_HardwareDescriptor *hardware,
     BoardSci_ScibPinConfiguration *configuration);
 
+BoardTest_U16 BoardSci_ResolveSciaPinConfiguration(
+    const BoardProfile_HardwareDescriptor *hardware,
+    BoardSci_ScibPinConfiguration *configuration);
+
 BoardTest_U16 BoardSci_ResolveRs422PinConfiguration(
     const BoardProfile_HardwareDescriptor *hardware,
     BoardSci_Rs422PinConfiguration *configuration);

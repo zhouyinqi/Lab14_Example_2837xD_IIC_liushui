@@ -659,6 +659,8 @@ static BoardTest_U16 BoardCan_RunHardwareLoopback(BoardTest_U32 txData,
     gBoardCanLoopbackSnapshot.newDataLow =
         (BoardTest_U16)(newData & 0xFFFFUL);
 
+    /* End silent loopback in INIT; external tests configure their own bus. */
+    BoardCan_Reg16(BOARD_CAN_CANB_BASE + BOARD_CAN_O_CTL) = BOARD_CAN_CTL_INIT;
     return result;
 }
 

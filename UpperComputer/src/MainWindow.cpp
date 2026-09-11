@@ -45,6 +45,7 @@ constexpr quint16 TestHdo = 0x0314;
 constexpr quint16 TestDi = 0x0315;
 constexpr quint16 TestCanExternal = 0x0307;
 constexpr quint16 TestSciRs485External = 0x0309;
+constexpr quint16 TestSciaRs485External = 0x0311;
 constexpr quint16 TestRs422External = 0x0316;
 constexpr quint16 TestEthernetBasic = 0x0305;
 constexpr quint16 TestEthernetSocket = 0x030D;
@@ -643,7 +644,7 @@ MainWindow::MainWindow(QWidget *parent)
     addTest(0x0308, QStringLiteral("I2C_EXTERNAL"), RefreshScope::External);
     addTest(0x0309, QStringLiteral("SCI_RS485_EXTERNAL"), RefreshScope::External);
     addTest(TestRs422External, QStringLiteral("RS422_EXTERNAL"), RefreshScope::External);
-    addTest(0x0311, QStringLiteral("SCIA_HANDHELD_EXTERNAL"), RefreshScope::External);
+    addTest(0x0311, QStringLiteral("SCIA / RS485_EXTERNAL"), RefreshScope::External);
     addTest(TestDido, QStringLiteral("DO_EXTERNAL"), RefreshScope::External);
     addTest(TestHdo, QStringLiteral("HDO_EXTERNAL"), RefreshScope::External);
     addTest(TestDi, QStringLiteral("DI_EXTERNAL"), RefreshScope::External);
@@ -2004,6 +2005,10 @@ void MainWindow::requestPendingScibRecordRefresh()
 
 quint16 MainWindow::activeSerialTestId() const
 {
+    if(m_scibSingleTestRequested &&
+       (m_singleTestRefreshId == TestSciaRs485External)) {
+        return TestSciaRs485External;
+    }
     return (m_boardProfileId == 0x0003U) ?
         TestRs422External : TestSciRs485External;
 }
@@ -2011,11 +2016,15 @@ quint16 MainWindow::activeSerialTestId() const
 bool MainWindow::isSerialExternalTest(quint16 testId) const
 {
     return (testId == TestSciRs485External) ||
+           (testId == TestSciaRs485External) ||
            (testId == TestRs422External);
 }
 
 QString MainWindow::activeSerialName() const
 {
+    if(activeSerialTestId() == TestSciaRs485External) {
+        return QStringLiteral("SCIA/RS485");
+    }
     return (m_boardProfileId == 0x0003U) ?
         QStringLiteral("RS422") : QStringLiteral("SCIB/RS485");
 }

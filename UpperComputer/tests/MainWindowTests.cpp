@@ -134,6 +134,20 @@ private:
     }
 
 private slots:
+    void lowVoltageSciaSerialRouting()
+    {
+        MainWindow window;
+        window.m_boardProfileId = 2U;
+        window.m_scibSingleTestRequested = true;
+        window.m_singleTestRefreshId = 0x0311;
+        QCOMPARE(window.activeSerialTestId(), quint16(0x0311));
+        QVERIFY(window.isSerialExternalTest(0x0311));
+        QCOMPARE(window.activeSerialName(), QStringLiteral("SCIA/RS485"));
+        window.m_scibSingleTestRequested = false;
+        QCOMPARE(window.activeSerialTestId(), quint16(0x0309));
+        window.m_boardProfileId = 3U;
+        QCOMPARE(window.activeSerialTestId(), quint16(0x0316));
+    }
     void initTestCase()
     {
         QVERIFY(m_settingsDirectory.isValid());

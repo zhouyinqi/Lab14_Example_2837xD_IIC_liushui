@@ -1091,6 +1091,27 @@ static void TestW5300BusIsolation(void)
         ~BOARD_EMIF_BASIC_EMIF1_CPU1, BOARD_EMIF_ASYNC_REQUIRED_MASK, 0U, 0U,
         &record) == BOARD_TEST_RESULT_FAIL);
 }
+static void TestSciaBoardRoutes(void)
+{
+    BoardSci_ScibPinConfiguration pins;
+    BoardProfile_HardwareDescriptor copy;
+    const BoardProfile_HardwareDescriptor *hardware;
+    hardware = BoardProfile_GetHardwareDescriptor(BOARD_PROFILE_ID_LOW_VOLTAGE_INVERTER,
+        BOARD_PROFILE_HARDWARE_REVISION_LOW_VOLTAGE_V04, BOARD_PROFILE_ETHERNET_EMIF_W5300);
+    assert(BoardSci_ResolveSciaPinConfiguration(hardware, &pins) == 1U);
+    assert(pins.directionGpio == 30U && pins.txGpio == 8U && pins.rxGpio == 9U);
+    assert(pins.txMux == 6U && pins.rxMux == 6U);
+    copy = *hardware;
+    copy.pins.sciaTransmit = 135U;
+    assert(BoardSci_ResolveSciaPinConfiguration(&copy, &pins) == 0U);
+    assert(pins.directionGpio == BOARD_PROFILE_PIN_UNUSED);
+    assert(BoardSci_ResolveSciaPinConfiguration(0, &pins) == 0U);
+    assert(BoardSci_ResolveSciaPinConfiguration(hardware, 0) == 0U);
+    hardware = BoardProfile_GetHardwareDescriptor(BOARD_PROFILE_ID_SYSTEM_MASTER,
+        BOARD_PROFILE_HARDWARE_REVISION_SYSTEM_MASTER_V01, BOARD_PROFILE_ETHERNET_EMIF_W5300);
+    assert(BoardSci_ResolveSciaPinConfiguration(hardware, &pins) == 1U);
+    assert(pins.directionGpio == 133U && pins.txGpio == 135U && pins.rxGpio == 136U);
+}
 static void TestSystemTimerBoundaries(void)
 {
     BoardTest_Record record;
@@ -2532,6 +2553,7 @@ int main(void)
     TestSystemMaskEvaluation();
     TestSystemTimerEvaluation();
     TestSystemTimerBoundaries();
+    TestSciaBoardRoutes();
     TestW5300BusIsolation();
     TestCoreConfigurationMasks();
     TestTmp116Evaluation();

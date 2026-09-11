@@ -28,6 +28,36 @@ volatile BoardSci_Rs422PinSnapshot gBoardSciRs422PinSnapshot =
     0U
 };
 
+BoardTest_U16 BoardSci_ResolveSciaPinConfiguration(
+    const BoardProfile_HardwareDescriptor *hardware,
+    BoardSci_ScibPinConfiguration *configuration)
+{
+    if(configuration == 0) return 0U;
+    configuration->directionGpio = BOARD_PROFILE_PIN_UNUSED;
+    configuration->txGpio = BOARD_PROFILE_PIN_UNUSED;
+    configuration->rxGpio = BOARD_PROFILE_PIN_UNUSED;
+    configuration->txMux = BOARD_PROFILE_PIN_UNUSED;
+    configuration->rxMux = BOARD_PROFILE_PIN_UNUSED;
+    if((hardware == 0) ||
+       ((hardware->implementedCapabilities & BOARD_PROFILE_CAP_SCIA) == 0UL))
+        return 0U;
+    /* Both known SCIA routes use mux 6; reject unknown pin tuples. */
+    if(!(((hardware->boardId == BOARD_PROFILE_ID_LOW_VOLTAGE_INVERTER) &&
+          (hardware->hardwareRevision == BOARD_PROFILE_HARDWARE_REVISION_LOW_VOLTAGE_V04) &&
+          (hardware->pins.sciaDirection == 30U) &&
+          (hardware->pins.sciaTransmit == 8U) && (hardware->pins.sciaReceive == 9U)) ||
+         ((hardware->boardId == BOARD_PROFILE_ID_SYSTEM_MASTER) &&
+          (hardware->pins.sciaDirection == 133U) &&
+          (hardware->pins.sciaTransmit == 135U) && (hardware->pins.sciaReceive == 136U))))
+        return 0U;
+    configuration->directionGpio = hardware->pins.sciaDirection;
+    configuration->txGpio = hardware->pins.sciaTransmit;
+    configuration->rxGpio = hardware->pins.sciaReceive;
+    configuration->txMux = 6U;
+    configuration->rxMux = 6U;
+    return 1U;
+}
+
 BoardTest_U16 BoardSci_ResolveScibPinConfiguration(
     const BoardProfile_HardwareDescriptor *hardware,
     BoardSci_ScibPinConfiguration *configuration)
@@ -152,6 +182,7 @@ volatile BoardSci_SciaHandheldExternalSnapshot
 
 static BoardTest_U16 BoardSci_Rs485ExternalState =
     BOARD_SCI_RS485_STATE_IDLE;
+static BoardTest_U16 BoardSci_SciaDirectionPin = BOARD_PROFILE_PIN_UNUSED;
 static BoardTest_U16 BoardSci_SciaHandheldExternalState =
     BOARD_SCI_RS485_STATE_IDLE;
 static BoardTest_U16 BoardSci_Rs485StandbyEnabled = 0U;
@@ -386,7 +417,8 @@ static void BoardSci_SetScibDirection(BoardTest_U16 level)
 
 static void BoardSci_SetSciaDirection(BoardTest_U16 level)
 {
-    GPIO_WritePin(BOARD_PIN_SCIA_DIRECTION, level);
+    if(BoardSci_SciaDirectionPin != BOARD_PROFILE_PIN_UNUSED)
+        GPIO_WritePin(BoardSci_SciaDirectionPin, level);
     gBoardSciSciaHandheldExternalSnapshot.directionLevel = level;
 }
 
@@ -544,15 +576,22 @@ static BoardTest_U16 BoardSci_InitScicRs422External(void)
     return 1U;
 }
 
-static void BoardSci_InitSciaHandheldExternal(void)
+static BoardTest_U16 BoardSci_InitSciaHandheldExternal(void)
 {
-    GPIO_SetupPinMux(BOARD_PIN_SCIA_RX, GPIO_MUX_CPU1, 6U);
-    GPIO_SetupPinOptions(BOARD_PIN_SCIA_RX, GPIO_INPUT, GPIO_ASYNC);
-    GPIO_SetupPinMux(BOARD_PIN_SCIA_TX, GPIO_MUX_CPU1, 6U);
-    GPIO_SetupPinOptions(BOARD_PIN_SCIA_TX, GPIO_OUTPUT, GPIO_ASYNC);
-    GPIO_SetupPinMux(BOARD_PIN_SCIA_DIRECTION, GPIO_MUX_CPU1, 0U);
-    GPIO_SetupPinOptions(BOARD_PIN_SCIA_DIRECTION, GPIO_OUTPUT,
+    BoardSci_ScibPinConfiguration pins;
+    BoardSci_SciaDirectionPin = BOARD_PROFILE_PIN_UNUSED;
+    if((BoardProfile_IsConfirmed() == 0U) ||
+       (BoardSci_ResolveSciaPinConfiguration(BoardProfile_GetCurrentHardware(), &pins) == 0U))
+        return 0U;
+    GPIO_SetupPinMux(pins.rxGpio, GPIO_MUX_CPU1, pins.rxMux);
+    GPIO_SetupPinOptions(pins.rxGpio, GPIO_INPUT, GPIO_ASYNC);
+    GPIO_SetupPinMux(pins.txGpio, GPIO_MUX_CPU1, pins.txMux);
+    GPIO_SetupPinOptions(pins.txGpio, GPIO_OUTPUT, GPIO_ASYNC);
+    GPIO_WritePin(pins.directionGpio, 0U);
+    GPIO_SetupPinMux(pins.directionGpio, GPIO_MUX_CPU1, 0U);
+    GPIO_SetupPinOptions(pins.directionGpio, GPIO_OUTPUT,
                          GPIO_PUSHPULL);
+    BoardSci_SciaDirectionPin = pins.directionGpio;
     BoardSci_SetSciaDirection(0U);
 
     SciaRegs.SCICTL1.all = 0x0000U;
@@ -571,6 +610,7 @@ static void BoardSci_InitSciaHandheldExternal(void)
     SciaRegs.SCIFFRX.bit.RXFFINTCLR = 1U;
     SciaRegs.SCIFFTX.bit.TXFFINTCLR = 1U;
     SciaRegs.SCICTL1.all = 0x0023U;
+    return 1U;
 }
 
 static void BoardSci_UpdateRs485ExternalSnapshot(BoardTest_U16 statusMask,
@@ -1008,7 +1048,12 @@ static BoardTest_Result BoardSci_StartSciaHandheldExternalTest(
     statusMask = 0U;
     detail = 0U;
 
-    BoardSci_InitSciaHandheldExternal();
+    if(BoardSci_InitSciaHandheldExternal() == 0U)
+    {
+        record->rawValue = 0UL;
+        record->errorCode = BOARD_TEST_ERROR_PROFILE_PINMAP;
+        return BOARD_TEST_RESULT_NOT_SUPPORTED;
+    }
     statusMask |= BOARD_SCI_HANDHELD_EXTERNAL_CONFIGURED;
     statusMask |= BOARD_SCI_HANDHELD_EXTERNAL_RX_ENABLE_LOW;
     BoardSci_SciaHandheldExternalState = BOARD_SCI_RS485_STATE_WAIT_RX;
@@ -1192,6 +1237,13 @@ BoardTest_Result BoardSci_RunLoopbackTest(BoardTest_Record *record)
     gBoardSciLoopbackSnapshot.statusMask = statusMask;
     gBoardSciLoopbackSnapshot.sciaDetail = sciaDetail;
     gBoardSciLoopbackSnapshot.scibDetail = scibDetail;
+
+    /* Leave both peripherals quiescent. The next external test initializes
+     * its own baud/FIFO; no internal loopback survives this test. */
+    SciaRegs.SCICTL1.all = 0U;
+    ScibRegs.SCICTL1.all = 0U;
+    SciaRegs.SCICCR.bit.LOOPBKENA = 0U;
+    ScibRegs.SCICCR.bit.LOOPBKENA = 0U;
 
     return BoardSci_EvaluateLoopbackStatus(statusMask, sciaRx, scibRx, record);
 }

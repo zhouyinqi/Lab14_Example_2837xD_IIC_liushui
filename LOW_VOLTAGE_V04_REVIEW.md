@@ -15,9 +15,9 @@
 | 片内 Flash | 检查 Flash 链接、等待周期、缓存、ECC 和电源配置，不擦写 | 核心基础 |
 | GPIO | 程序灯 GPIO3/4 读回，不证明全部端子或使能安全 | 核心基础 |
 | EMIF/W5300 | 已改为W5300专用29脚白名单及EMIF1-CS2，低压基础不再要求/配置EMIF2 | 通信基础优先修复 |
-| CAN-B | 已有按板型 GPIO6/7 配置与回环实现；实板待验证 | 通信基础 |
-| SCI | 内部回环已检查 A/B；SCIA 外部仍用固定系统板宏，V04 尚未开放 | 通信基础/外部通信 |
-| SPI | 内部回环及 W25Q64 ID 已实现；FRAM 保存/测试/恢复路径待复核 | 通信基础 |
+| CAN-B | 已有按板型 GPIO6/7 配置与静默回环；回环结束置INIT，实板待验证 | 通信基础 |
+| SCI | 已改为按硬件白名单解析SCIA GPIO30/8/9，Qt支持0x0311串口收发；A/B回环结束关闭回环 | 通信基础/外部通信 |
+| SPI | 已复核内部回环、W25Q64只读ID；FRAM使用既有保留字节0x3FFF0，写尝试后恢复并核验，恢复失败不得PASS | 通信基础 |
 | ADC | V04 13 通道已建表，原基础能力未开放；转换比例不能套用低空板 | ADC 基础 |
 | PWM | 公共安全配置只冻结 ePWM，不映射端子；V04 输出软件锁有效电平待硬件依据 | PWM 基础 |
 | 0x0400～0x040A | 原始注册均无 IMPLEMENTED，只有管脚矩阵及 Qt 名称 | 基础闭环后逐项处理 |
@@ -39,3 +39,5 @@
 - WIZnet直接模式0x400地址空间：https://docs.wiznet.io/img/products/w5300/W5300_DS_V134E.pdf 。
 - TI EMIF半字地址BA1说明：https://e2e.ti.com/cfs-file/__key/communityserver-discussions-components-files/171/Technical-Reference-Manual.pdf 。
 - 主机回归及CCS Debug Flash编译链接通过；W5300连接仍需重新烧录实板复测。
+
+- 通信软件验证：DSP主机回归、CCS Debug Flash构建、Qt回归1/1通过。SCIA管脚串板/空参数被拒绝；串口仍需外部收发器和实际COM接线验证。
