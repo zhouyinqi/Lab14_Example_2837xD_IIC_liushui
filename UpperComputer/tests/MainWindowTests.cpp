@@ -1,5 +1,7 @@
 #include "MainWindow.h"
 #include "EthernetTcpTestClient.h"
+#include "ScibSerialClient.h"
+#include "ZlgCanClient.h"
 
 #include <QAbstractButton>
 #include <QAbstractItemView>
@@ -144,6 +146,99 @@ private:
 private slots:
     void ethernetSimulatedDevice_data()
     {
+        ethernetDeviceRows();
+    }
+
+    void simulatedCanReceiveAndCleanup()
+    {
+        static int scenario, resets, closes, receives;
+        ZlgCanClient client;
+        client.m_receive = [](quint32, quint32, quint32,
+                              ZlgCanClient::VciCanObject *frames, quint32, qint32) -> quint32 {
+            ++receives;
+            if(scenario == 1) return 0xFFFFFFFFU;
+            if(scenario == 2) return 0U;
+            frames[0] = {};
+            frames[0].id = scenario == 3 ? 0x123U : 1U;
+            frames[0].dataLength = scenario == 4 ? 8U : 4U;
+            frames[0].externFlag = scenario == 5 ? 1U : 0U;
+            frames[0].remoteFlag = scenario == 6 ? 1U : 0U;
+            frames[0].data[0] = scenario == 7 ? 0U : 0xA5U;
+            frames[0].data[1] = 0x5AU;
+            frames[0].data[2] = 0xA5U;
+            frames[0].data[3] = 0x5AU;
+            return 1U;
+        };
+        client.m_resetCan = [](quint32, quint32, quint32) -> quint32 { ++resets; return 1U; };
+        client.m_closeDevice = [](quint32, quint32) -> quint32 { ++closes; return 1U; };
+        QSignalSpy finished(&client, &ZlgCanClient::testFinished);
+        for(scenario = 0; scenario < 9; ++scenario) {
+            resets = closes = receives = 0;
+            finished.clear();
+            client.m_active = client.m_deviceOpened = client.m_channelStarted = true;
+            if(scenario == 8) {
+                client.cancel();
+            } else {
+                client.pollReceive();
+                if(scenario >= 2) {
+                    QCOMPARE(finished.count(), 0);
+                    client.m_timeoutTimer.start(1);
+                    QTRY_COMPARE(finished.count(), 1);
+                }
+            }
+            QCOMPARE(finished.count(), 1);
+            QCOMPARE(finished.first().at(0).toBool(), scenario == 0);
+            QCOMPARE(resets, 1);
+            QCOMPARE(closes, 1);
+            QVERIFY(!client.isActive());
+            QVERIFY(!client.m_pollTimer.isActive());
+            QVERIFY(!client.m_timeoutTimer.isActive());
+            const auto reads = receives;
+            client.pollReceive();
+            client.cancel();
+            QCOMPARE(receives, reads);
+            QCOMPARE(finished.count(), 1);
+        }
+    }
+
+    void simulatedSerialReceiveTimeoutAndRepeat()
+    {
+        ScibSerialClient client;
+        QSignalSpy finished(&client, &ScibSerialClient::testFinished);
+        const QList<QByteArray> replies = {QByteArray::fromHex("5a"),
+            QByteArray::fromHex("00"), QByteArray::fromHex("a55a"),
+            QByteArray::fromHex("5a5a")};
+        for(const auto &reply : replies) {
+            finished.clear();
+            client.m_active = true;
+            client.m_timeout.start(2000);
+            client.processReceivedData({});
+            QCOMPARE(finished.count(), 0);
+            client.processReceivedData(reply);
+            QCOMPARE(finished.count(), 1);
+            QCOMPARE(finished.first().at(0).toBool(), reply == QByteArray::fromHex("5a"));
+            QVERIFY(!client.isActive());
+            QVERIFY(!client.m_timeout.isActive());
+            client.processReceivedData(QByteArray::fromHex("5a"));
+            QCOMPARE(finished.count(), 1);
+        }
+        finished.clear();
+        client.m_active = true;
+        client.m_timeout.start(1);
+        QTRY_COMPARE(finished.count(), 1);
+        QVERIFY(!finished.first().at(0).toBool());
+        client.m_active = true;
+        client.cancel();
+        QCOMPARE(finished.count(), 2);
+        QVERIFY(!client.isActive());
+        client.startTest(QString());
+        QCOMPARE(finished.count(), 3);
+        QVERIFY(!finished.last().at(0).toBool());
+    }
+
+private:
+    void ethernetDeviceRows()
+    {
         QTest::addColumn<int>("scenario");
         QTest::addColumn<bool>("passed");
         QTest::newRow("link") << 0 << true;
@@ -155,6 +250,7 @@ private slots:
         QTest::newRow("silent-timeout") << 6 << false;
     }
 
+private slots:
     void ethernetSimulatedDevice()
     {
         QFETCH(int, scenario);

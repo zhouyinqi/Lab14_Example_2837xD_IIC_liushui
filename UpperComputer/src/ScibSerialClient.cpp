@@ -17,14 +17,7 @@ ScibSerialClient::ScibSerialClient(QObject *parent)
                QStringLiteral("串口等待 0x5A 超时。请检查转换器、COM 口、9600 8N1 和 DSP 待命状态。"));
     });
     connect(&m_serial, &QSerialPort::readyRead, this, [this] {
-        if (!m_active) {
-            return;
-        }
-
-        m_receivedData.append(m_serial.readAll());
-        if (m_receivedData.contains(ScibTestResponse)) {
-            finish(true, QStringLiteral("串口自动测试通过：0xA5 -> 0x5A。"));
-        }
+        processReceivedData(m_serial.readAll());
     });
     connect(&m_serial, &QSerialPort::errorOccurred, this,
             [this](QSerialPort::SerialPortError error) {
@@ -39,6 +32,16 @@ ScibSerialClient::ScibSerialClient(QObject *parent)
 bool ScibSerialClient::isActive() const
 {
     return m_active;
+}
+
+void ScibSerialClient::processReceivedData(const QByteArray &data)
+{
+    if(!m_active || data.isEmpty()) return;
+    m_receivedData = data;
+    if(data == QByteArray(1, ScibTestResponse))
+        finish(true, QStringLiteral("串口自动测试通过：0xA5 -> 0x5A。"));
+    else
+        finish(false, QStringLiteral("串口应答不匹配：应为单字节 0x5A。"));
 }
 
 void ScibSerialClient::startTest(const QString &portName, qint32 baudRate)

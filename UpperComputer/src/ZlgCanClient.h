@@ -29,6 +29,7 @@ signals:
     void testFinished(bool passed, const QString &message);
 
 private:
+    friend class MainWindowTests;
     struct VciInitConfig {
         quint32 acceptanceCode;
         quint32 acceptanceMask;

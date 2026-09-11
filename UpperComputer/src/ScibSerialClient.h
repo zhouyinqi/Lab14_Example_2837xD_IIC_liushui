@@ -20,6 +20,8 @@ signals:
     void testFinished(bool passed, const QString &message);
 
 private:
+    friend class MainWindowTests;
+    void processReceivedData(const QByteArray &data);
     void finish(bool passed, const QString &message);
 
     QSerialPort m_serial;

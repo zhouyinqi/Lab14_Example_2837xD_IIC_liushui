@@ -442,6 +442,7 @@ QString ZlgCanClient::bridgeExecutablePath() const
 
 void ZlgCanClient::pollReceive()
 {
+    if(!m_active || m_receive == nullptr) return;
     VciCanObject frames[16] = {};
     const quint32 receiveCount = m_receive(m_deviceType,
                                            m_deviceIndex,
