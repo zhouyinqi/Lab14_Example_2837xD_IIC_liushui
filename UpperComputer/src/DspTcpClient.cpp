@@ -266,12 +266,18 @@ void DspTcpClient::sendNextRequest()
     }
 
     m_requestInFlight = true;
-    m_socket.write(m_txQueue.dequeue());
+    const auto request = m_txQueue.dequeue();
+    m_inFlightSequence = (static_cast<quint8>(request[4]) << 8U) |
+                         static_cast<quint8>(request[5]);
+    m_inFlightCommand = static_cast<DspTestProtocol::Command>(
+        static_cast<quint8>(request[3]));
+    m_socket.write(request);
     m_responseTimer.start();
 }
 
 void DspTcpClient::clearPendingRequests()
 {
+    m_rxBuffer.clear();
     m_txQueue.clear();
     m_requestInFlight = false;
     m_responseTimer.stop();
@@ -282,11 +288,8 @@ void DspTcpClient::processIncomingData()
     while (m_rxBuffer.size() >= DspTestProtocol::ResponseSize) {
         const int headerIndex = m_rxBuffer.indexOf(QByteArrayLiteral("BR"));
         if (headerIndex < 0) {
-            m_rxBuffer.clear();
-            m_requestInFlight = false;
-            m_responseTimer.stop();
+            m_rxBuffer = m_rxBuffer.endsWith('B') ? QByteArray("B") : QByteArray();
             emit protocolError(QStringLiteral("收到无效响应帧头"));
-            sendNextRequest();
             return;
         }
 
@@ -300,10 +303,13 @@ void DspTcpClient::processIncomingData()
         QString error;
         m_rxBuffer.remove(0, DspTestProtocol::ResponseSize);
         if (!DspTestProtocol::parseResponse(frame, &response, &error)) {
-            m_requestInFlight = false;
-            m_responseTimer.stop();
             emit protocolError(error);
-            sendNextRequest();
+            continue;
+        }
+
+        if(!m_requestInFlight || response.sequence != m_inFlightSequence ||
+           response.command != m_inFlightCommand) {
+            emit protocolError(QStringLiteral("忽略与当前请求不匹配的 DSP 响应。"));
             continue;
         }
 

@@ -71,5 +71,7 @@ private:
     bool m_reconnectLimitReached = false;
     int m_automaticReconnectAttempts = 0;
     bool m_requestInFlight = false;
+    quint16 m_inFlightSequence = 0;
+    DspTestProtocol::Command m_inFlightCommand = DspTestProtocol::Command::Ping;
     quint16 m_sequence = 1;
 };

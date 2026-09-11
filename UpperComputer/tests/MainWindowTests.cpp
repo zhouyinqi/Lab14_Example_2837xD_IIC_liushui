@@ -63,7 +63,21 @@ public:
                         buffer.remove(0, DspTestProtocol::RequestSize);
                         requests.append(request);
                         if (respond) {
-                            socket->write(makeResponse(request));
+                            const auto response = makeResponse(request);
+                            if(injectInvalidResponses) {
+                                auto invalid = response;
+                                put16(invalid, 4, qFromBigEndian<quint16>(request.data() + 4) - 1U);
+                                put16(invalid, 38, DspTestProtocol::crc16(invalid, 38));
+                                socket->write(invalid);
+                                invalid = response;
+                                invalid[3] = static_cast<char>(static_cast<quint8>(request[3]) ^ 1U);
+                                put16(invalid, 38, DspTestProtocol::crc16(invalid, 38));
+                                socket->write(invalid);
+                                invalid = response;
+                                invalid[38] = static_cast<char>(invalid[38] ^ 1);
+                                socket->write(invalid);
+                            }
+                            if(sendValidResponse) socket->write(response);
                         }
                     }
                 });
@@ -72,6 +86,14 @@ public:
     }
 
     bool respond = true;
+    bool injectInvalidResponses = false;
+    bool sendValidResponse = true;
+    void replyToLastRequest()
+    {
+        const auto sockets = findChildren<QTcpSocket *>();
+        if(!sockets.isEmpty() && !requests.isEmpty())
+            sockets.last()->write(makeResponse(requests.last()));
+    }
     int statusResponses = 0;
     QList<QByteArray> requests;
     DspTestProtocol::Result recordResult = DspTestProtocol::Result::Warn;
@@ -151,6 +173,36 @@ private slots:
 
     void simulatedCanReceiveAndCleanup()
     {
+        runSimulatedCanReceiveAndCleanup();
+    }
+
+    void staleControlResponsesCannotAdvanceQueue()
+    {
+        MockDsp server;
+        server.injectInvalidResponses = true;
+        server.sendValidResponse = false;
+        QVERIFY(server.listen(QHostAddress::LocalHost, 0));
+        DspTcpClient client;
+        QSignalSpy responses(&client, &DspTcpClient::responseReceived);
+        QSignalSpy errors(&client, &DspTcpClient::protocolError);
+        client.connectToDevice(QStringLiteral("127.0.0.1"), server.serverPort());
+        QTRY_VERIFY(client.isConnected());
+        QTRY_COMPARE(errors.count(), 3);
+        QCOMPARE(responses.count(), 0);
+        client.requestStatus();
+        QTest::qWait(50);
+        QCOMPARE(server.requests.count(), 1);
+        server.injectInvalidResponses = false;
+        server.sendValidResponse = true;
+        server.replyToLastRequest();
+        QTRY_COMPARE(responses.count(), 2);
+        QCOMPARE(server.requests.count(), 2);
+        client.disconnectFromDevice();
+    }
+
+private:
+    void runSimulatedCanReceiveAndCleanup()
+    {
         static int scenario, resets, closes, receives;
         ZlgCanClient client;
         client.m_receive = [](quint32, quint32, quint32,
@@ -201,6 +253,7 @@ private slots:
         }
     }
 
+private slots:
     void simulatedSerialReceiveTimeoutAndRepeat()
     {
         ScibSerialClient client;
