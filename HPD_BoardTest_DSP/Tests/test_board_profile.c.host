@@ -89,6 +89,8 @@ static void TestKnownHardwareMatrix(void)
     assert(hardware->hardwareRevision ==
            BOARD_PROFILE_HARDWARE_REVISION_LOW_VOLTAGE_V04);
     assert(hardware->pinMapRevision == 4U);
+    assert(BoardProfile_GetTestAvailability(BOARD_TEST_ID_LV_DI_EXTERNAL,
+        BOARD_TEST_CAP_IMPLEMENTED) == BOARD_PROFILE_TEST_PENDING_VALIDATION);
     assert(BoardProfile_GetTestAvailability(BOARD_TEST_ID_ADC_BASIC,
         BOARD_TEST_CAP_IMPLEMENTED) == BOARD_PROFILE_TEST_PENDING_VALIDATION);
     assert(BoardProfile_GetTestAvailability(BOARD_TEST_ID_PWM_BASIC,

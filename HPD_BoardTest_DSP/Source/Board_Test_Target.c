@@ -46,6 +46,7 @@ volatile BoardTest_CommandMailbox gBoardTestCommandMailbox =
     0U,
     0U,
     0U,
+    0U,
     0U
 };
 
@@ -511,10 +512,21 @@ void BoardHostProtocol_HandleRequest(
         {
             status = BOARD_HOST_PROTOCOL_STATUS_ARGUMENT;
         }
+        else if(((argument == BOARD_TEST_ID_LV_DI_EXTERNAL) ||
+                 (argument == BOARD_TEST_ID_LV_STO_EXTERNAL)) &&
+                (BoardDi_LowVoltageSelectionMask(argument, singleSelection) == 0U))
+        {
+            status = BOARD_HOST_PROTOCOL_STATUS_ARGUMENT;
+        }
         else
         {
             gBoardTestCommandMailbox.stage = stage;
             gBoardTestCommandMailbox.testId = argument;
+            if((argument == BOARD_TEST_ID_LV_DI_EXTERNAL) ||
+               (argument == BOARD_TEST_ID_LV_STO_EXTERNAL))
+            {
+                gBoardTestCommandMailbox.lowVoltageInputSelection = singleSelection;
+            }
             if(argument == BOARD_TEST_ID_DIDO_FPGA_DO_EXTERNAL)
             {
                 gBoardTestCommandMailbox.fpgaDoTestArmKey =
@@ -1078,6 +1090,11 @@ BoardTest_Result BoardTest_TargetExecute(BoardTest_U16 testId,
         case BOARD_TEST_ID_DI_FPGA_EXTERNAL:
             return BoardTest_TargetRunDiExternal(record);
 
+        case BOARD_TEST_ID_LV_DI_EXTERNAL:
+        case BOARD_TEST_ID_LV_STO_EXTERNAL:
+            return BoardDi_RunLowVoltageInputTest(testId,
+                gBoardTestCommandMailbox.lowVoltageInputSelection, record);
+
         case BOARD_TEST_ID_DRIVER_FAULT_DI_EXTERNAL:
         {
             BoardTest_U16 channelMask;
@@ -1255,6 +1272,8 @@ void BoardTest_TargetPoll(void)
         BoardSci_AbortRs422ExternalTest();
         BoardSci_AbortSciaHandheldExternalTest();
         BoardCan_AbortExternalTest();
+        BoardDi_AbortLowVoltageInputTest();
+        gBoardTestCommandMailbox.lowVoltageInputSelection = 0U;
         gBoardTestCommandMailbox.fpgaDoTestArmKey = 0U;
         gBoardTestCommandMailbox.fpgaHdoTestArmKey = 0U;
         gBoardTestCommandMailbox.pwmDidoTestArmKey = 0U;

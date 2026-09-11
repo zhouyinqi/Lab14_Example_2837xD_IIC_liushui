@@ -226,6 +226,9 @@ private:
     QWidget *m_driverResetPanel = nullptr;
     QComboBox *m_driverResetChannelBox = nullptr;
     QLabel *m_driverResetLiveValueLabel = nullptr;
+    QWidget *m_lowVoltageInputPanel = nullptr;
+    QComboBox *m_lowVoltageInputBox = nullptr;
+    QLabel *m_lowVoltageInputStatus = nullptr;
     QTableWidget *m_boardRecordsTable = nullptr;
     QTableWidget *m_externalRecordsTable = nullptr;
     QTableWidget *m_hpdRecordsTable = nullptr;

@@ -101,6 +101,24 @@ extern volatile BoardDi_DspSnapshot gBoardDiDspSnapshot;
 extern volatile BoardDi_DspSnapshot gBoardDiDriverFaultSnapshot;
 extern volatile BoardDi_DspSnapshot gBoardDiProtectionFaultSnapshot;
 
+#define BOARD_DI_LV_TIMEOUT_MS 30000UL
+typedef struct
+{
+    BoardTest_U16 expectedMask;
+    BoardTest_U16 lowSeen;
+    BoardTest_U16 highSeen;
+    BoardTest_U16 transitions;
+    BoardTest_U16 previous;
+    BoardTest_U16 sampled;
+} BoardDi_LowVoltageCapture;
+extern volatile BoardDi_DspSnapshot gBoardDiLowVoltageSnapshot;
+BoardTest_U16 BoardDi_LowVoltageSelectionMask(BoardTest_U16 testId,
+                                             BoardTest_U16 selection);
+void BoardDi_InitLowVoltageCapture(BoardDi_LowVoltageCapture *capture,
+                                  BoardTest_U16 mask);
+BoardTest_Result BoardDi_UpdateLowVoltageCapture(BoardDi_LowVoltageCapture *capture,
+    BoardTest_U16 currentMask, BoardTest_U32 elapsedMs, BoardTest_Record *record);
+
 BoardTest_Result BoardDi_EvaluateFpgaStatus(
     BoardTest_U16 statusMask,
     BoardTest_U16 failCode,
@@ -135,6 +153,9 @@ BoardTest_Result BoardDi_EvaluateProtectionFaultStatus(
     BoardTest_Record *record);
 
 #ifndef BOARD_TEST_HOST
+BoardTest_Result BoardDi_RunLowVoltageInputTest(BoardTest_U16 testId,
+    BoardTest_U16 selection, BoardTest_Record *record);
+void BoardDi_AbortLowVoltageInputTest(void);
 BoardTest_Result BoardDi_RunFpgaExternalTest(
     BoardTest_Record *record,
     BoardTest_U16 requestedChannelMask);

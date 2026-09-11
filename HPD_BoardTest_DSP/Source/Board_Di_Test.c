@@ -2,8 +2,176 @@
 #include "Board_Fpga_Test.h"
 #include "Board_Profile.h"
 
+volatile BoardDi_DspSnapshot gBoardDiLowVoltageSnapshot = {0U};
+
+BoardTest_U16 BoardDi_LowVoltageSelectionMask(BoardTest_U16 testId,
+                                             BoardTest_U16 selection)
+{
+    BoardTest_U16 count;
+    if(testId == BOARD_TEST_ID_LV_DI_EXTERNAL) count = 6U;
+    else if(testId == BOARD_TEST_ID_LV_STO_EXTERNAL) count = 2U;
+    else return 0U;
+    if(selection > count) return 0U;
+    return (selection == 0U) ? (BoardTest_U16)((1U << count) - 1U) :
+        (BoardTest_U16)(1U << (selection - 1U));
+}
+
+void BoardDi_InitLowVoltageCapture(BoardDi_LowVoltageCapture *capture,
+                                  BoardTest_U16 mask)
+{
+    capture->expectedMask = mask;
+    capture->lowSeen = 0U;
+    capture->highSeen = 0U;
+    capture->transitions = 0U;
+    capture->previous = 0U;
+    capture->sampled = 0U;
+}
+
+BoardTest_Result BoardDi_UpdateLowVoltageCapture(BoardDi_LowVoltageCapture *capture,
+    BoardTest_U16 currentMask, BoardTest_U32 elapsedMs, BoardTest_Record *record)
+{
+    BoardTest_U16 mask = capture->expectedMask;
+    currentMask &= mask;
+    if((mask == 0U) || ((mask & ~0x003FU) != 0U))
+    {
+        record->errorCode = BOARD_TEST_ERROR_PROFILE_PINMAP;
+        return BOARD_TEST_RESULT_NOT_SUPPORTED;
+    }
+    /* Samples arriving after the deadline cannot turn TIMEOUT into PASS. */
+    if(elapsedMs <= BOARD_DI_LV_TIMEOUT_MS)
+    {
+        capture->lowSeen |= (BoardTest_U16)(~currentMask & mask);
+        capture->highSeen |= currentMask;
+        if(capture->sampled != 0U)
+            capture->transitions |= capture->previous ^ currentMask;
+        capture->previous = currentMask;
+        capture->sampled = 1U;
+    }
+    record->rawValue = ((BoardTest_U32)currentMask << 24U) |
+        ((BoardTest_U32)capture->highSeen << 16U) | capture->lowSeen;
+    record->measuredValue = (float)capture->transitions;
+    record->expectedMin = (float)mask;
+    record->expectedMax = (float)mask;
+    record->errorCode = BOARD_TEST_ERROR_NONE;
+    if((capture->lowSeen & capture->highSeen & capture->transitions & mask) == mask)
+        return BOARD_TEST_RESULT_PASS;
+    if(elapsedMs >= BOARD_DI_LV_TIMEOUT_MS)
+    {
+        record->errorCode = BOARD_TEST_ERROR_DI_EXTERNAL;
+        return BOARD_TEST_RESULT_TIMEOUT;
+    }
+    return BOARD_TEST_RESULT_RUNNING;
+}
+
 #ifndef BOARD_TEST_HOST
 #include "F28x_Project.h"
+
+static BoardDi_LowVoltageCapture BoardDi_LvCapture;
+static BoardTest_U16 BoardDi_LvActive = 0U;
+static BoardTest_U16 BoardDi_LvTestId;
+static BoardTest_U32 BoardDi_LvStart;
+static Uint32 BoardDi_LvOldPeriod, BoardDi_LvOldCounter;
+static Uint16 BoardDi_LvOldTcr, BoardDi_LvOldTpr, BoardDi_LvOldTprh;
+
+void BoardDi_AbortLowVoltageInputTest(void)
+{
+    if(BoardDi_LvActive == 0U) return;
+    CpuTimer2Regs.TCR.bit.TSS = 1U;
+    CpuTimer2Regs.PRD.all = BoardDi_LvOldPeriod;
+    CpuTimer2Regs.TIM.all = BoardDi_LvOldCounter;
+    CpuTimer2Regs.TPR.all = BoardDi_LvOldTpr;
+    CpuTimer2Regs.TPRH.all = BoardDi_LvOldTprh;
+    CpuTimer2Regs.TCR.all = BoardDi_LvOldTcr;
+    BoardDi_LvActive = 0U;
+}
+
+BoardTest_Result BoardDi_RunLowVoltageInputTest(BoardTest_U16 testId,
+    BoardTest_U16 selection, BoardTest_Record *record)
+{
+    const BoardProfile_HardwareDescriptor *hardware;
+    const BoardTest_U16 *pins;
+    BoardTest_U16 mask, count, i, currentMask;
+    BoardTest_U32 elapsedMs;
+    BoardTest_Result result;
+    hardware = BoardProfile_GetCurrentHardware();
+    mask = BoardDi_LowVoltageSelectionMask(testId, selection);
+    if((BoardProfile_IsConfirmed() == 0U) || (hardware == 0) ||
+       (hardware->boardId != BOARD_PROFILE_ID_LOW_VOLTAGE_INVERTER) ||
+       (hardware->hardwareRevision != BOARD_PROFILE_HARDWARE_REVISION_LOW_VOLTAGE_V04) ||
+       (hardware->lowVoltagePins == 0) || (mask == 0U))
+    {
+        BoardDi_AbortLowVoltageInputTest();
+        record->errorCode = BOARD_TEST_ERROR_PROFILE_PINMAP;
+        return BOARD_TEST_RESULT_NOT_SUPPORTED;
+    }
+    pins = (testId == BOARD_TEST_ID_LV_DI_EXTERNAL) ?
+        hardware->lowVoltagePins->digitalInputs : hardware->lowVoltagePins->stoInputs;
+    count = (testId == BOARD_TEST_ID_LV_DI_EXTERNAL) ? 6U : 2U;
+    if(BoardDi_LvActive == 0U)
+    {
+        for(i = 0U; i < count; i++)
+        {
+            if((mask & (1U << i)) == 0U) continue;
+            if(pins[i] == BOARD_PROFILE_PIN_UNUSED)
+            {
+                record->errorCode = BOARD_TEST_ERROR_PROFILE_PINMAP;
+                return BOARD_TEST_RESULT_NOT_SUPPORTED;
+            }
+            GPIO_SetupPinMux(pins[i], GPIO_MUX_CPU1, 0U);
+            GPIO_SetupPinOptions(pins[i], GPIO_INPUT, GPIO_ASYNC);
+        }
+        BoardDi_InitLowVoltageCapture(&BoardDi_LvCapture, mask);
+        gBoardDiLowVoltageSnapshot.statusMask = BOARD_DI_STATUS_CONFIGURED;
+        gBoardDiLowVoltageSnapshot.failCode = BOARD_DI_FAIL_NONE;
+        gBoardDiLowVoltageSnapshot.requestedChannelMask = mask;
+        gBoardDiLowVoltageSnapshot.observedInactiveMask = 0U;
+        gBoardDiLowVoltageSnapshot.observedActiveMask = 0U;
+        gBoardDiLowVoltageSnapshot.transitionMask = 0U;
+        gBoardDiLowVoltageSnapshot.sampleCount = 0U;
+        BoardDi_LvOldPeriod = CpuTimer2Regs.PRD.all;
+        BoardDi_LvOldCounter = CpuTimer2Regs.TIM.all;
+        BoardDi_LvOldTcr = CpuTimer2Regs.TCR.all;
+        BoardDi_LvOldTpr = CpuTimer2Regs.TPR.all;
+        BoardDi_LvOldTprh = CpuTimer2Regs.TPRH.all;
+        CpuTimer2Regs.TCR.bit.TSS = 1U;
+        CpuTimer2Regs.PRD.all = 0xFFFFFFFFUL;
+        CpuTimer2Regs.TPR.all = 199U;
+        CpuTimer2Regs.TPRH.all = 0U;
+        CpuTimer2Regs.TCR.bit.TIE = 0U;
+        CpuTimer2Regs.TCR.bit.FREE = 1U;
+        CpuTimer2Regs.TCR.bit.TRB = 1U;
+        CpuTimer2Regs.TCR.bit.TSS = 0U;
+        BoardDi_LvStart = CpuTimer2Regs.TIM.all;
+        BoardDi_LvTestId = testId;
+        BoardDi_LvActive = 1U;
+    }
+    if((BoardDi_LvTestId != testId) || (BoardDi_LvCapture.expectedMask != mask))
+    {
+        BoardDi_AbortLowVoltageInputTest();
+        record->errorCode = BOARD_TEST_ERROR_ABORTED;
+        return BOARD_TEST_RESULT_FAIL;
+    }
+    currentMask = 0U;
+    for(i = 0U; i < count; i++)
+        if(((mask & (1U << i)) != 0U) && (GPIO_ReadPin(pins[i]) != 0U))
+            currentMask |= (1U << i);
+    elapsedMs = ((BoardDi_LvStart - CpuTimer2Regs.TIM.all) & 0xFFFFFFFFUL) / 1000UL;
+    if(gBoardDiLowVoltageSnapshot.sampleCount == 0U)
+        gBoardDiLowVoltageSnapshot.firstRawValue = currentMask;
+    if(gBoardDiLowVoltageSnapshot.sampleCount < 0xFFFFU)
+        gBoardDiLowVoltageSnapshot.sampleCount++;
+    result = BoardDi_UpdateLowVoltageCapture(&BoardDi_LvCapture, currentMask, elapsedMs, record);
+    gBoardDiLowVoltageSnapshot.lastRawValue = currentMask;
+    gBoardDiLowVoltageSnapshot.observedInactiveMask = BoardDi_LvCapture.lowSeen;
+    gBoardDiLowVoltageSnapshot.observedActiveMask = BoardDi_LvCapture.highSeen;
+    gBoardDiLowVoltageSnapshot.transitionMask = BoardDi_LvCapture.transitions;
+    if(result == BOARD_TEST_RESULT_PASS)
+        gBoardDiLowVoltageSnapshot.statusMask = BOARD_DI_DSP_REQUIRED_STATUS_MASK;
+    if(result == BOARD_TEST_RESULT_TIMEOUT)
+        gBoardDiLowVoltageSnapshot.failCode = BOARD_DI_FAIL_TIMEOUT;
+    if(result != BOARD_TEST_RESULT_RUNNING) BoardDi_AbortLowVoltageInputTest();
+    return result;
+}
 #endif
 
 volatile BoardDi_FpgaSnapshot gBoardDiFpgaSnapshot =

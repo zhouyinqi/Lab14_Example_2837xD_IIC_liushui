@@ -45,6 +45,7 @@ typedef struct
     volatile BoardTest_U16 protectionSelection;
     volatile BoardTest_U16 driverResetTestArmKey;
     volatile BoardTest_U16 driverResetOutputMask;
+    volatile BoardTest_U16 lowVoltageInputSelection;
 } BoardTest_CommandMailbox;
 
 extern volatile BoardTest_CommandMailbox gBoardTestCommandMailbox;

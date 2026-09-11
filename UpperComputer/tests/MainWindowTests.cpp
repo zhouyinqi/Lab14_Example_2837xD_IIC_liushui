@@ -134,6 +134,32 @@ private:
     }
 
 private slots:
+    void lowVoltageInputSelectionAndPartialProgress()
+    {
+        MainWindow window;
+        window.m_singleStageBox->setCurrentIndex(window.m_singleStageBox->findData(
+            static_cast<quint16>(DspTestProtocol::Stage::ExternalConnected)));
+        window.m_singleTestBox->clear();
+        window.m_singleTestBox->addItem(QStringLiteral("LV DI"), 0x0400);
+        window.updateSingleTestParameterControls();
+        QCOMPARE(window.m_lowVoltageInputBox->count(), 7);
+        QCOMPARE(window.m_lowVoltageInputBox->itemData(6).toInt(), 6);
+        DspTestProtocol::Response response{};
+        response.recordId = 0x0400;
+        response.recordResult = DspTestProtocol::Result::Running;
+        response.expectedMin = 0x3f;
+        response.expectedMax = 0x3f;
+        response.rawValue = 0x1f1f003f;
+        response.measuredValue = 0x1f;
+        window.updateRecord(response);
+        QVERIFY(window.m_lowVoltageInputStatus->text().contains(QStringLiteral("DI1：PASS")));
+        QVERIFY(!window.m_lowVoltageInputStatus->text().contains(QStringLiteral("DI6：PASS")));
+        window.m_singleTestBox->clear();
+        window.m_singleTestBox->addItem(QStringLiteral("LV STO"), 0x0403);
+        window.updateSingleTestParameterControls();
+        QCOMPARE(window.m_lowVoltageInputBox->count(), 3);
+        QVERIFY(!window.m_lowVoltageInputStatus->text().contains(QStringLiteral("DI1：PASS")));
+    }
     void lowVoltageSciaSerialRouting()
     {
         MainWindow window;
