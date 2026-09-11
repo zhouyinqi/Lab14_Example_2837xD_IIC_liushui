@@ -1,6 +1,13 @@
 #include "Board_Sci_Test.h"
 #include "Board_Profile.h"
 
+BoardTest_U16 BoardSci_ExternalDeadlineExpired(BoardTest_U32 start,
+                                              BoardTest_U32 now)
+{
+    return (((start - now) & 0xFFFFFFFFUL) >=
+            BOARD_SCI_EXTERNAL_TIMEOUT_US) ? 1U : 0U;
+}
+
 volatile BoardSci_ScibPinSnapshot gBoardSciScibPinSnapshot =
 {
     BOARD_PROFILE_PIN_UNUSED,
@@ -1248,19 +1255,99 @@ BoardTest_Result BoardSci_RunLoopbackTest(BoardTest_Record *record)
     return BoardSci_EvaluateLoopbackStatus(statusMask, sciaRx, scibRx, record);
 }
 
+/* Single-test scheduling makes Timer2 exclusive with DI/STO capture.
+ * Preserve the timer and restore it on completion, timeout and STOP. */
+static BoardTest_U16 BoardSci_DeadlineOwner;
+static BoardTest_U32 BoardSci_DeadlineStart;
+static BoardTest_U32 BoardSci_OldPeriod, BoardSci_OldCounter;
+static BoardTest_U16 BoardSci_OldTcr, BoardSci_OldTpr, BoardSci_OldTprh;
+
+static void BoardSci_StopDeadline(BoardTest_U16 owner)
+{
+    if(BoardSci_DeadlineOwner != owner) return;
+    CpuTimer2Regs.TCR.bit.TSS = 1U;
+    CpuTimer2Regs.PRD.all = BoardSci_OldPeriod;
+    CpuTimer2Regs.TIM.all = BoardSci_OldCounter;
+    CpuTimer2Regs.TPR.all = BoardSci_OldTpr;
+    CpuTimer2Regs.TPRH.all = BoardSci_OldTprh;
+    CpuTimer2Regs.TCR.all = BoardSci_OldTcr;
+    BoardSci_DeadlineOwner = 0U;
+}
+
+static void BoardSci_StartDeadline(BoardTest_U16 owner)
+{
+    const BoardProfile_HardwareDescriptor *hardware;
+    hardware = BoardProfile_GetCurrentHardware();
+    if((hardware == 0) ||
+       (hardware->boardId != BOARD_PROFILE_ID_LOW_VOLTAGE_INVERTER) ||
+       (BoardSci_DeadlineOwner != 0U)) return;
+    BoardSci_OldPeriod = CpuTimer2Regs.PRD.all;
+    BoardSci_OldCounter = CpuTimer2Regs.TIM.all;
+    BoardSci_OldTcr = CpuTimer2Regs.TCR.all;
+    BoardSci_OldTpr = CpuTimer2Regs.TPR.all;
+    BoardSci_OldTprh = CpuTimer2Regs.TPRH.all;
+    CpuTimer2Regs.TCR.bit.TSS = 1U;
+    CpuTimer2Regs.PRD.all = 0xFFFFFFFFUL;
+    CpuTimer2Regs.TPR.all = 199U;
+    CpuTimer2Regs.TPRH.all = 0U;
+    CpuTimer2Regs.TCR.bit.TIE = 0U;
+    CpuTimer2Regs.TCR.bit.FREE = 1U;
+    CpuTimer2Regs.TCR.bit.TRB = 1U;
+    CpuTimer2Regs.TCR.bit.TSS = 0U;
+    BoardSci_DeadlineStart = CpuTimer2Regs.TIM.all;
+    BoardSci_DeadlineOwner = owner;
+}
+
+static BoardTest_Result BoardSci_RunTimedExternal(BoardTest_Record *record,
+                                                  BoardTest_U16 scia)
+{
+    BoardTest_Result result;
+    BoardTest_U16 state, owner, detail;
+    owner = scia ? 1U : 2U;
+    state = scia ? BoardSci_SciaHandheldExternalState :
+                   BoardSci_Rs485ExternalState;
+    if((BoardSci_DeadlineOwner == owner) &&
+       BoardSci_ExternalDeadlineExpired(BoardSci_DeadlineStart,
+                                        CpuTimer2Regs.TIM.all))
+    {
+        detail = (state == BOARD_SCI_RS485_STATE_WAIT_TX) ?
+                 BOARD_SCI_DETAIL_TX_TIMEOUT : BOARD_SCI_DETAIL_RX_TIMEOUT;
+        if(scia)
+            BoardSci_FailSciaHandheldExternalTest(
+                gBoardSciSciaHandheldExternalSnapshot.statusMask,
+                gBoardSciSciaHandheldExternalSnapshot.rxValue,
+                gBoardSciSciaHandheldExternalSnapshot.txValue,
+                gBoardSciSciaHandheldExternalSnapshot.detail | detail, record);
+        else
+            BoardSci_FailRs485ExternalTest(
+                gBoardSciRs485ExternalSnapshot.statusMask,
+                gBoardSciRs485ExternalSnapshot.rxValue,
+                gBoardSciRs485ExternalSnapshot.txValue,
+                gBoardSciRs485ExternalSnapshot.detail | detail, record);
+        BoardSci_StopDeadline(owner);
+        record->errorCode = scia ? BOARD_TEST_ERROR_SCIA_HANDHELD_EXTERNAL :
+                                   BOARD_TEST_ERROR_SCI_RS485_EXTERNAL;
+        return BOARD_TEST_RESULT_TIMEOUT;
+    }
+    if(state == BOARD_SCI_RS485_STATE_IDLE)
+    {
+        result = scia ? BoardSci_StartSciaHandheldExternalTest(record) :
+                        BoardSci_StartRs485ExternalTest(record);
+        if(result == BOARD_TEST_RESULT_RUNNING) BoardSci_StartDeadline(owner);
+    }
+    else if(state == BOARD_SCI_RS485_STATE_WAIT_RX)
+        result = scia ? BoardSci_PollSciaHandheldExternalRx(record) :
+                        BoardSci_PollRs485ExternalRx(record);
+    else
+        result = scia ? BoardSci_PollSciaHandheldExternalTxDone(record) :
+                        BoardSci_PollRs485ExternalTxDone(record);
+    if(result != BOARD_TEST_RESULT_RUNNING) BoardSci_StopDeadline(owner);
+    return result;
+}
+
 BoardTest_Result BoardSci_RunRs485ExternalTest(BoardTest_Record *record)
 {
-    if(BoardSci_Rs485ExternalState == BOARD_SCI_RS485_STATE_IDLE)
-    {
-        return BoardSci_StartRs485ExternalTest(record);
-    }
-
-    if(BoardSci_Rs485ExternalState == BOARD_SCI_RS485_STATE_WAIT_RX)
-    {
-        return BoardSci_PollRs485ExternalRx(record);
-    }
-
-    return BoardSci_PollRs485ExternalTxDone(record);
+    return BoardSci_RunTimedExternal(record, 0U);
 }
 
 BoardTest_Result BoardSci_RunRs422ExternalTest(BoardTest_Record *record)
@@ -1281,17 +1368,7 @@ BoardTest_Result BoardSci_RunRs422ExternalTest(BoardTest_Record *record)
 BoardTest_Result BoardSci_RunSciaHandheldExternalTest(
     BoardTest_Record *record)
 {
-    if(BoardSci_SciaHandheldExternalState == BOARD_SCI_RS485_STATE_IDLE)
-    {
-        return BoardSci_StartSciaHandheldExternalTest(record);
-    }
-
-    if(BoardSci_SciaHandheldExternalState == BOARD_SCI_RS485_STATE_WAIT_RX)
-    {
-        return BoardSci_PollSciaHandheldExternalRx(record);
-    }
-
-    return BoardSci_PollSciaHandheldExternalTxDone(record);
+    return BoardSci_RunTimedExternal(record, 1U);
 }
 
 BoardTest_U16 BoardSci_EnableRs485ExternalStandby(void)
@@ -1671,6 +1748,7 @@ void BoardSci_ServiceRs422ExternalStandby(
 
 void BoardSci_AbortRs485ExternalTest(void)
 {
+    BoardSci_StopDeadline(2U);
     if(BoardSci_Rs485ExternalState != BOARD_SCI_RS485_STATE_IDLE)
     {
         BoardSci_SetScibDirection(0U);
@@ -1685,6 +1763,7 @@ void BoardSci_AbortRs422ExternalTest(void)
 
 void BoardSci_AbortSciaHandheldExternalTest(void)
 {
+    BoardSci_StopDeadline(1U);
     if(BoardSci_SciaHandheldExternalState != BOARD_SCI_RS485_STATE_IDLE)
     {
         BoardSci_SetSciaDirection(0U);

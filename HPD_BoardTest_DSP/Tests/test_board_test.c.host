@@ -1221,6 +1221,12 @@ static void TestSciLoopbackEvaluation(void)
 {
     BoardTest_Record record;
 
+    assert(BoardSci_ExternalDeadlineExpired(40000000UL, 40000000UL) == 0U);
+    assert(BoardSci_ExternalDeadlineExpired(40000000UL, 10000001UL) == 0U);
+    assert(BoardSci_ExternalDeadlineExpired(40000000UL, 10000000UL) != 0U);
+    assert(BoardSci_ExternalDeadlineExpired(100UL, 0xFFFFFF00UL) == 0U);
+    assert(BoardSci_ExternalDeadlineExpired(100UL,
+        (100UL - BOARD_SCI_EXTERNAL_TIMEOUT_US) & 0xFFFFFFFFUL) != 0U);
     assert(BoardSci_EvaluateLoopbackStatus(
                (BoardTest_U16)BOARD_SCI_LOOPBACK_EXPECTED_MASK,
                BOARD_SCI_LOOPBACK_SCIA_PATTERN,

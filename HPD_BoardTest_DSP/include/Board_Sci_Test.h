@@ -3,6 +3,10 @@
 
 #include "Board_Profile.h"
 
+#define BOARD_SCI_EXTERNAL_TIMEOUT_US 30000000UL
+BoardTest_U16 BoardSci_ExternalDeadlineExpired(BoardTest_U32 start,
+                                              BoardTest_U32 now);
+
 #define BOARD_SCI_LOOPBACK_SCIA_PASS       0x0001UL
 #define BOARD_SCI_LOOPBACK_SCIB_PASS       0x0002UL
 #define BOARD_SCI_LOOPBACK_EXPECTED_MASK   0x0003UL
