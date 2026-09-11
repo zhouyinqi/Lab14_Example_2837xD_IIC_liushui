@@ -39,3 +39,8 @@
 
 - 2026-09-11：DSP run_host_tests.ps1 通过（源文件范围、测试调度、硬件矩阵）。
 - Qt HpdHostTests 构建成功；ctest 1/1 通过，耗时约 34 秒。均为无硬件回归。
+
+## 开发环境与补充资料
+
+- Windows，CCS DSP 工程；Qt 6.11.1 MinGW 64 位，MinGW 13.1，CMake。DSP 编译器版本及当前烧录器型号待核对。
+- 本阶段读取了临时出现的 AGENTS.md.md 补充规则和 PROJECT_CONTEXT.md.md 模板，补充规则已合入 AGENTS.md；随后原稿已被外部移除，实际状态维护在本文件。
