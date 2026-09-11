@@ -485,7 +485,9 @@ void BoardHostProtocol_HandleRequest(
         else if(((argument == BOARD_TEST_ID_DIDO_FPGA_DO_EXTERNAL) ||
                  (argument == BOARD_TEST_ID_HDO_FPGA_EXTERNAL) ||
                  (argument == BOARD_TEST_ID_PWM_DIDO_EXTERNAL) ||
-                 (argument == BOARD_TEST_ID_DRIVER_RESET_DO_EXTERNAL)) &&
+                 (argument == BOARD_TEST_ID_DRIVER_RESET_DO_EXTERNAL) ||
+                 (argument == BOARD_TEST_ID_LV_DO_EXTERNAL) ||
+                 (argument == BOARD_TEST_ID_LV_HDO_EXTERNAL)) &&
                 ((flags & BOARD_HOST_PROTOCOL_FLAG_OUTPUT_ARMED) == 0U))
         {
             status = BOARD_HOST_PROTOCOL_STATUS_ARGUMENT;
@@ -512,6 +514,12 @@ void BoardHostProtocol_HandleRequest(
         {
             status = BOARD_HOST_PROTOCOL_STATUS_ARGUMENT;
         }
+        else if(((argument == BOARD_TEST_ID_LV_DO_EXTERNAL) &&
+                 ((singleSelection < 1U) || (singleSelection > 5U))) ||
+                ((argument == BOARD_TEST_ID_LV_HDO_EXTERNAL) && singleSelection != 1U))
+        {
+            status = BOARD_HOST_PROTOCOL_STATUS_ARGUMENT;
+        }
         else if(((argument == BOARD_TEST_ID_LV_DI_EXTERNAL) ||
                  (argument == BOARD_TEST_ID_LV_STO_EXTERNAL)) &&
                 (BoardDi_LowVoltageSelectionMask(argument, singleSelection) == 0U))
@@ -522,6 +530,12 @@ void BoardHostProtocol_HandleRequest(
         {
             gBoardTestCommandMailbox.stage = stage;
             gBoardTestCommandMailbox.testId = argument;
+            if((argument == BOARD_TEST_ID_LV_DO_EXTERNAL) ||
+               (argument == BOARD_TEST_ID_LV_HDO_EXTERNAL))
+            {
+                gBoardTestCommandMailbox.lowVoltageInputSelection = singleSelection;
+                gBoardTestCommandMailbox.driverResetTestArmKey = BOARD_DIDO_TEST_ARM_KEY;
+            }
             if((argument == BOARD_TEST_ID_LV_DI_EXTERNAL) ||
                (argument == BOARD_TEST_ID_LV_STO_EXTERNAL))
             {
@@ -1094,6 +1108,17 @@ BoardTest_Result BoardTest_TargetExecute(BoardTest_U16 testId,
         case BOARD_TEST_ID_LV_STO_EXTERNAL:
             return BoardDi_RunLowVoltageInputTest(testId,
                 gBoardTestCommandMailbox.lowVoltageInputSelection, record);
+
+        case BOARD_TEST_ID_LV_DO_EXTERNAL:
+        case BOARD_TEST_ID_LV_HDO_EXTERNAL:
+        {
+            BoardTest_Result result = BoardDi_RunLowVoltageOutputTest(testId,
+                gBoardTestCommandMailbox.lowVoltageInputSelection,
+                gBoardTestCommandMailbox.driverResetTestArmKey, record);
+            if(result != BOARD_TEST_RESULT_RUNNING)
+                gBoardTestCommandMailbox.driverResetTestArmKey = 0U;
+            return result;
+        }
 
         case BOARD_TEST_ID_DRIVER_FAULT_DI_EXTERNAL:
         {

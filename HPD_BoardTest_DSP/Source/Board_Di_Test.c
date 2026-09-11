@@ -72,10 +72,36 @@ static BoardTest_U16 BoardDi_LvTestId;
 static BoardTest_U32 BoardDi_LvStart;
 static Uint32 BoardDi_LvOldPeriod, BoardDi_LvOldCounter;
 static Uint16 BoardDi_LvOldTcr, BoardDi_LvOldTpr, BoardDi_LvOldTprh;
+static BoardTest_U16 BoardDi_LvOutputPin = BOARD_PROFILE_PIN_UNUSED;
+static BoardTest_U16 BoardDi_LvOutputSeen;
+
+static void BoardDi_StartLvTimer(void)
+{
+    BoardDi_LvOldPeriod = CpuTimer2Regs.PRD.all;
+    BoardDi_LvOldCounter = CpuTimer2Regs.TIM.all;
+    BoardDi_LvOldTcr = CpuTimer2Regs.TCR.all;
+    BoardDi_LvOldTpr = CpuTimer2Regs.TPR.all;
+    BoardDi_LvOldTprh = CpuTimer2Regs.TPRH.all;
+    CpuTimer2Regs.TCR.bit.TSS = 1U;
+    CpuTimer2Regs.PRD.all = 0xFFFFFFFFUL;
+    CpuTimer2Regs.TPR.all = 199U;
+    CpuTimer2Regs.TPRH.all = 0U;
+    CpuTimer2Regs.TCR.bit.TIE = 0U;
+    CpuTimer2Regs.TCR.bit.FREE = 1U;
+    CpuTimer2Regs.TCR.bit.TRB = 1U;
+    CpuTimer2Regs.TCR.bit.TSS = 0U;
+    BoardDi_LvStart = CpuTimer2Regs.TIM.all;
+    BoardDi_LvActive = 1U;
+}
 
 void BoardDi_AbortLowVoltageInputTest(void)
 {
     if(BoardDi_LvActive == 0U) return;
+    if(BoardDi_LvOutputPin != BOARD_PROFILE_PIN_UNUSED)
+    {
+        GPIO_WritePin(BoardDi_LvOutputPin, 0U);
+        BoardDi_LvOutputPin = BOARD_PROFILE_PIN_UNUSED;
+    }
     CpuTimer2Regs.TCR.bit.TSS = 1U;
     CpuTimer2Regs.PRD.all = BoardDi_LvOldPeriod;
     CpuTimer2Regs.TIM.all = BoardDi_LvOldCounter;
@@ -83,6 +109,69 @@ void BoardDi_AbortLowVoltageInputTest(void)
     CpuTimer2Regs.TPRH.all = BoardDi_LvOldTprh;
     CpuTimer2Regs.TCR.all = BoardDi_LvOldTcr;
     BoardDi_LvActive = 0U;
+}
+
+BoardTest_Result BoardDi_RunLowVoltageOutputTest(BoardTest_U16 testId,
+    BoardTest_U16 selection, BoardTest_U16 armKey, BoardTest_Record *record)
+{
+    const BoardProfile_HardwareDescriptor *h = BoardProfile_GetCurrentHardware();
+    BoardTest_U16 pin, level;
+    BoardTest_U32 elapsed;
+    if((armKey != 0xD012U) || !BoardProfile_IsConfirmed() || (h == 0) ||
+       h->boardId != BOARD_PROFILE_ID_LOW_VOLTAGE_INVERTER || h->lowVoltagePins == 0)
+    {
+        BoardDi_AbortLowVoltageInputTest();
+        return BOARD_TEST_RESULT_SAFETY_LOCKED;
+    }
+    if(testId == BOARD_TEST_ID_LV_DO_EXTERNAL && selection >= 1U && selection <= 5U)
+        pin = selection <= 3U ? h->lowVoltagePins->digitalOutputs[selection-1U] :
+            (selection == 4U ? h->lowVoltagePins->softStartOutput : h->lowVoltagePins->fanOutput);
+    else if(testId == BOARD_TEST_ID_LV_HDO_EXTERNAL && selection == 1U)
+        pin = h->lowVoltagePins->highCurrentOutput;
+    else
+    {
+        BoardDi_AbortLowVoltageInputTest();
+        return BOARD_TEST_RESULT_NOT_SUPPORTED;
+    }
+    if(BoardDi_LvActive == 0U)
+    {
+        /* V04 sheet: ENPWM_SFT high locks power PWM. */
+        GPIO_WritePin(91U, 1U);
+        GPIO_SetupPinMux(91U, GPIO_MUX_CPU1, 0U);
+        GPIO_SetupPinOptions(91U, GPIO_OUTPUT, GPIO_PUSHPULL);
+        GPIO_WritePin(pin, 0U);
+        GPIO_SetupPinMux(pin, GPIO_MUX_CPU1, 0U);
+        GPIO_SetupPinOptions(pin, GPIO_OUTPUT, GPIO_PUSHPULL);
+        BoardDi_LvOutputPin = pin;
+        BoardDi_LvOutputSeen = 0U;
+        BoardDi_LvTestId = testId;
+        BoardDi_StartLvTimer();
+    }
+    if(BoardDi_LvOutputPin != pin || BoardDi_LvTestId != testId)
+    {
+        BoardDi_AbortLowVoltageInputTest();
+        record->errorCode = BOARD_TEST_ERROR_ABORTED;
+        return BOARD_TEST_RESULT_FAIL;
+    }
+    elapsed = ((BoardDi_LvStart - CpuTimer2Regs.TIM.all) & 0xFFFFFFFFUL) / 1000UL;
+    level = elapsed >= 1000UL && elapsed < 3000UL ? 1U : 0U;
+    GPIO_WritePin(pin, level);
+    record->rawValue = ((BoardTest_U32)pin << 16U) | GPIO_ReadPin(pin);
+    record->measuredValue = (float)level;
+    record->expectedMin = 0.0F;
+    record->expectedMax = 1.0F;
+    record->errorCode = BOARD_TEST_ERROR_NONE;
+    if(GPIO_ReadPin(pin) != level)
+    {
+        BoardDi_AbortLowVoltageInputTest();
+        record->errorCode = BOARD_TEST_ERROR_PROFILE_PINMAP;
+        return BOARD_TEST_RESULT_FAIL;
+    }
+    BoardDi_LvOutputSeen |= (1U << level);
+    if(elapsed < 4000UL) return BOARD_TEST_RESULT_RUNNING;
+    BoardDi_AbortLowVoltageInputTest();
+    /* GPIO readback cannot certify the relay/terminal. */
+    return BoardDi_LvOutputSeen == 3U ? BOARD_TEST_RESULT_WARN : BOARD_TEST_RESULT_FAIL;
 }
 
 BoardTest_Result BoardDi_RunLowVoltageInputTest(BoardTest_U16 testId,

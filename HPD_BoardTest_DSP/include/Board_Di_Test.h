@@ -156,6 +156,8 @@ BoardTest_Result BoardDi_EvaluateProtectionFaultStatus(
 BoardTest_Result BoardDi_RunLowVoltageInputTest(BoardTest_U16 testId,
     BoardTest_U16 selection, BoardTest_Record *record);
 void BoardDi_AbortLowVoltageInputTest(void);
+BoardTest_Result BoardDi_RunLowVoltageOutputTest(BoardTest_U16 testId,
+    BoardTest_U16 selection, BoardTest_U16 armKey, BoardTest_Record *record);
 BoardTest_Result BoardDi_RunFpgaExternalTest(
     BoardTest_Record *record,
     BoardTest_U16 requestedChannelMask);

@@ -544,7 +544,7 @@ MainWindow::MainWindow(QWidget *parent)
     lvInputLayout->addWidget(m_lowVoltageInputBox);
     lvInputLayout->addWidget(m_lowVoltageInputStatus);
     lvInputLayout->addWidget(new QLabel(QStringLiteral(
-        "只接板端调理输入；按原理图确认电平与公共端。每路高低保持约1秒，30秒内完成翻转。"), m_lowVoltageInputPanel));
+        "输入可用信号发生器逐路注入；只接板端调理输入，确认幅值/偏置与公共端。每路高低保持约1秒。输出仅用仪表观察，禁止注入。"), m_lowVoltageInputPanel));
     singleLayout->addWidget(m_lowVoltageInputPanel, 1, 0, 1, 6);
     m_lowVoltageInputPanel->setVisible(false);
     m_driverResetPanel = new QWidget(singleGroup);
@@ -1238,9 +1238,9 @@ MainWindow::MainWindow(QWidget *parent)
                       QStringLiteral("驱动复位单路输出测试：%1。")
                           .arg(m_driverResetPendingChannelText));
         }
-        if((testId == TestLowVoltageDi) || (testId == TestLowVoltageSto)) {
+        if((testId == TestLowVoltageDi) || (testId == TestLowVoltageSto) || (testId == TestLowVoltageDo) || (testId == TestLowVoltageHdo)) {
             singleSelection = static_cast<quint8>(m_lowVoltageInputBox->currentData().toUInt());
-            m_lowVoltageInputStatus->setText(QStringLiteral("等待所选输入出现高、低电平及翻转"));
+            m_lowVoltageInputStatus->setText(QStringLiteral("正在执行所选通道测试；结果以实际采样和外部观察为准"));
         }        m_client.startSingle(testId,
                              stage,
                              isOutput,
@@ -1476,7 +1476,7 @@ MainWindow::MainWindow(QWidget *parent)
                 if (response.command == DspTestProtocol::Command::StartSingle &&
                     response.protocolStatus == DspTestProtocol::ProtocolStatus::Ok) {
                     if((m_singleTestRefreshId == TestLowVoltageDi) ||
-                       (m_singleTestRefreshId == TestLowVoltageSto)) {
+                       (m_singleTestRefreshId == TestLowVoltageSto) || (m_singleTestRefreshId == TestLowVoltageDo) || (m_singleTestRefreshId == TestLowVoltageHdo)) {
                         m_liveRecordRequestPending = false;
                         m_protectionResetLiveTimer->start();
                     }
@@ -1546,7 +1546,7 @@ MainWindow::MainWindow(QWidget *parent)
                      (response.recordId == TestProtectionFaultDi) ||
                      (response.recordId == TestDriverResetDo) ||
                      (response.recordId == TestLowVoltageDi) ||
-                     (response.recordId == TestLowVoltageSto)) &&
+                     (response.recordId == TestLowVoltageSto) || (response.recordId == TestLowVoltageDo) || (response.recordId == TestLowVoltageHdo)) &&
                     (response.recordResult != DspTestProtocol::Result::Running) &&
                     (response.recordResult != DspTestProtocol::Result::NotRun);
                 if(liveSingleRecordCompleted) {
@@ -1680,7 +1680,7 @@ MainWindow::MainWindow(QWidget *parent)
            ((m_singleTestRefreshId == TestProtectionFaultDi) ||
              (m_singleTestRefreshId == TestDriverResetDo) ||
              (m_singleTestRefreshId == TestLowVoltageDi) ||
-             (m_singleTestRefreshId == TestLowVoltageSto)) &&
+             (m_singleTestRefreshId == TestLowVoltageSto) || (m_singleTestRefreshId == TestLowVoltageDo) || (m_singleTestRefreshId == TestLowVoltageHdo)) &&
            !m_singleTestRecordRefreshInFlight &&
            !m_liveRecordRequestPending &&
            (m_nextRecordIndex < 0)) {
@@ -2201,7 +2201,7 @@ void MainWindow::updateRecord(const DspTestProtocol::Response &response)
     if(((response.recordId == TestProtectionFaultDi) ||
         (response.recordId == TestDriverResetDo) ||
                      (response.recordId == TestLowVoltageDi) ||
-                     (response.recordId == TestLowVoltageSto)) &&
+                     (response.recordId == TestLowVoltageSto) || (response.recordId == TestLowVoltageDo) || (response.recordId == TestLowVoltageHdo)) &&
        (response.recordResult != DspTestProtocol::Result::Running)) {
         m_protectionResetLiveTimer->stop();
         if(response.recordId == TestDriverResetDo) {
@@ -3550,7 +3550,7 @@ bool MainWindow::selectedTestIsOutput() const
     return (testId == TestDido) ||
            (testId == TestHdo) ||
            (testId == TestPwmDido) ||
-           (testId == TestDriverResetDo);
+           (testId == TestDriverResetDo) || (testId == TestLowVoltageDo) || (testId == TestLowVoltageHdo);
 }
 
 void MainWindow::updateSingleTestParameterControls()
@@ -3569,18 +3569,19 @@ void MainWindow::updateSingleTestParameterControls()
         m_singleTestBox->currentData().toUInt());
     const auto stage = static_cast<DspTestProtocol::Stage>(
         m_singleStageBox->currentData().toUInt());
-    const bool lvInput = (testId == TestLowVoltageDi) || (testId == TestLowVoltageSto);
+    const bool lvOutput = (testId == TestLowVoltageDo) || (testId == TestLowVoltageHdo);
+    const bool lvInput = lvOutput || (testId == TestLowVoltageDi) || (testId == TestLowVoltageSto);
     m_lowVoltageInputPanel->setVisible(lvInput &&
         (stage == DspTestProtocol::Stage::ExternalConnected));
     if(lvInput && (m_lowVoltageInputBox->property("testId").toUInt() != testId)) {
         m_lowVoltageInputBox->clear();
-        const int count = (testId == TestLowVoltageDi) ? 6 : 2;
+        const int count = lvOutput ? (testId == TestLowVoltageDo ? 5 : 1) : ((testId == TestLowVoltageDi) ? 6 : 2);
         const QString prefix = (testId == TestLowVoltageDi) ? QStringLiteral("DI") : QStringLiteral("STO");
-        m_lowVoltageInputBox->addItem(QStringLiteral("全部%1路").arg(count), 0);
+        if(!lvOutput) m_lowVoltageInputBox->addItem(QStringLiteral("全部%1路").arg(count), 0);
         for(int i = 1; i <= count; ++i)
-            m_lowVoltageInputBox->addItem(QStringLiteral("%1%2 单路").arg(prefix).arg(i), i);
+            m_lowVoltageInputBox->addItem(lvOutput ? (testId == TestLowVoltageHdo ? QStringLiteral("HDO1 / GPIO12") : QStringList{QStringLiteral("DO1 / GPIO57"),QStringLiteral("DO2 / GPIO56"),QStringLiteral("DO4 / GPIO54"),QStringLiteral("软启动 / GPIO62"),QStringLiteral("风扇 / GPIO49")}.at(i-1)) : QStringLiteral("%1%2 单路").arg(prefix).arg(i), i);
         m_lowVoltageInputBox->setProperty("testId", testId);
-        m_lowVoltageInputStatus->setText((testId == TestLowVoltageSto) ?
+        m_lowVoltageInputStatus->setText(lvOutput ? QStringLiteral("待测试；单路低1秒/高2秒/低1秒。断开负载，用万用表或示波器观察；禁止向输出接信号发生器。GPIO读回完成仅WARN，需端子复核。") : (testId == TestLowVoltageSto) ?
             QStringLiteral("只验证两路数字反馈，不代表STO安全功能认证") :
             QStringLiteral("待测试；只有全部所选通道均有高、低与翻转才通过"));
     }    const bool isSingle = testId == TestAdcExternalInjection;

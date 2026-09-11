@@ -8,7 +8,7 @@
 - 根目录：C:/Users/zyq/Desktop/WORK/PCB_BOARD_TEST/HPD_BoardTest；DSP为HPD_BoardTest_DSP，Qt为UpperComputer。旧Lab14目录不再用于开发。
 - Git分支main；origin为https://github.com/zhouyinqi/Lab14_Example_2837xD_IIC_liushui.git。
 - Windows；CCS v8、TI C2000 18.1.4.LTS；Qt 6.11.1、MinGW 13.1、CMake。当前烧录器型号待核对。
-- V04确认基线：F28377D、EMIF W5300、SPIB W25Q64/FM25V20A。引脚采用已有V04矩阵，原始0820引脚表尚未找到。
+- V04确认基线：F28377D、EMIF W5300、SPIB W25Q64/FM25V20A。引脚采用已有V04矩阵，0820原始引脚表已读取，详见V04_HARDWARE_REFERENCE.md。
 
 ## 长期约束
 
@@ -37,7 +37,7 @@
 
 - DSP主机回归通过；CCS Debug Flash全量编译链接通过，随后SCI超时改动增量构建通过。
 - Qt独立验证目录中程序与HpdHostTests构建通过，ctest 1/1通过。模拟结果不是硬件PASS，未烧录。
-- 原始V04引脚xls未找到；现有可读四板设计大纲不提供输出极性、调理公式、AO/旋变协议。具体缺失信息见覆盖表。0x0401/0402/0404～0x040A保持待开发。
+- 原始V04引脚xls已由用户提供并读取；原始表已提供ADC调理公式、锁波及故障极性；AO占空比关系和旋变协议仍缺失。具体缺失信息见覆盖表。0x0401/0402/0404～0x040A保持待开发。
 - 下一顺序：继续剩余源码逐文件复核与真实通信驱动/链路验证；硬件依据齐备后依次完成DO/HDO、ADC/PT100/NTC、PWM/保护/AO/旋变；V04实板逐项验收后更新对应状态。
 - 已检查本轮改动及其相关调用路径，尚未完成所有历史源码逐文件审查，不将清单扫描当作全面审查。
 - 代码提交已补推至c4521e6，网络偶发443连接失败；本次使用git -c http.sslBackend=schannel push origin main恢复，不修改全局配置。后续任务开始核对本地/远端HEAD。
@@ -45,3 +45,5 @@
 ## 其他板型已知事项
 
 - 低空板网络、ADC基础/X3/X4、SPIB、DI/DO已有部分实板通过记录；PT4硬件异常、PWM后级端子链路、保护故障位/D_BRK/外部中断仍待硬件确认。
+
+- 当前开发项0x0401：单路DO1/DO2/DO4、软启、风扇低1秒/高2秒/低1秒，显式输出授权、结束/停止恢复低；GPIO读回只返回WARN，外部端子待测试。下一项HDO。本轮使用信号发生器替代多路PLC，不进行实板测试。
