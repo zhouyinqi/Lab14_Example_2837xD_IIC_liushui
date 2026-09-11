@@ -89,6 +89,11 @@ static void TestKnownHardwareMatrix(void)
     assert(hardware->hardwareRevision ==
            BOARD_PROFILE_HARDWARE_REVISION_LOW_VOLTAGE_V04);
     assert(hardware->pinMapRevision == 4U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_HPD_ESTOP_DI3) == 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_HPD_DRIVER_1) == 0U);
+    assert(BoardProfile_IsTestSupported(BOARD_TEST_ID_HPD_PHASE_2) == 0U);
+    assert(BoardProfile_GetTestAvailability(BOARD_TEST_ID_HPD_NTC_1,
+        BOARD_TEST_CAP_IMPLEMENTED) == BOARD_PROFILE_TEST_NOT_AVAILABLE);
     assert(BoardProfile_GetTestAvailability(BOARD_TEST_ID_LV_STO_EXTERNAL,
         BOARD_TEST_CAP_IMPLEMENTED) == BOARD_PROFILE_TEST_PENDING_VALIDATION);
     assert(BoardProfile_GetTestAvailability(BOARD_TEST_ID_LV_DI_EXTERNAL,

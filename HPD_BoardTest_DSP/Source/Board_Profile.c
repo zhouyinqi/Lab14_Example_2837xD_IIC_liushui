@@ -766,6 +766,14 @@ static BoardTest_U16 BoardProfile_IsTestMappedForHardware(
     BoardTest_U16 testId,
     const BoardProfile_HardwareDescriptor *hardware)
 {
+    /* Legacy dual-driver fixture IDs have no V04 terminal mapping. */
+    if((hardware->boardId == BOARD_PROFILE_ID_LOW_VOLTAGE_INVERTER) &&
+       (testId >= BOARD_TEST_ID_HPD_ESTOP_DI3) &&
+       (testId <= BOARD_TEST_ID_HPD_PHASE_2))
+    {
+        return 0U;
+    }
+
     if((testId == BOARD_TEST_ID_LV_DI_EXTERNAL) ||
        (testId == BOARD_TEST_ID_LV_DO_EXTERNAL) ||
        (testId == BOARD_TEST_ID_LV_HDO_EXTERNAL) ||
