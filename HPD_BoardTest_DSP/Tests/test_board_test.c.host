@@ -380,7 +380,7 @@ static BoardTest_Result TestExecutor(BoardTest_U16 testId,
 
     if(testId == BOARD_TEST_ID_SYS_TIMER)
     {
-        return BoardSystem_EvaluateTimerDelta(1000UL, 900UL, record);
+        return BoardSystem_EvaluateTimerDelta(5000UL, 1000UL, record);
     }
 
     if(testId == BOARD_TEST_ID_SYS_WATCHDOG)
@@ -1018,9 +1018,9 @@ static void TestSystemTimerEvaluation(void)
 {
     BoardTest_Record record;
 
-    assert(BoardSystem_EvaluateTimerDelta(1000UL, 900UL, &record) ==
+    assert(BoardSystem_EvaluateTimerDelta(5000UL, 1000UL, &record) ==
            BOARD_TEST_RESULT_PASS);
-    assert(record.rawValue == 100UL);
+    assert(record.rawValue == 4000UL);
     assert(record.errorCode == BOARD_TEST_ERROR_NONE);
 
     assert(BoardSystem_EvaluateTimerDelta(900UL, 1000UL, &record) ==
@@ -1028,6 +1028,40 @@ static void TestSystemTimerEvaluation(void)
     assert(record.errorCode == BOARD_TEST_ERROR_SYS_TIMER);
 }
 
+static void TestCoreConfigurationMasks(void)
+{
+    BoardTest_Record record;
+    BoardTest_U32 bit;
+    for(bit = 1UL; bit <= BOARD_SYSTEM_STARTUP_WD_DISABLED; bit <<= 1U)
+    {
+        assert(BoardSystem_EvaluateMask(BOARD_SYSTEM_STARTUP_EXPECTED_MASK & ~bit,
+            BOARD_SYSTEM_STARTUP_EXPECTED_MASK, BOARD_TEST_ERROR_STARTUP_CFG,
+            &record) == BOARD_TEST_RESULT_FAIL);
+    }
+    assert(BoardSystem_EvaluateMask(BOARD_SYSTEM_STARTUP_EXPECTED_MASK,
+        BOARD_SYSTEM_STARTUP_EXPECTED_MASK, BOARD_TEST_ERROR_STARTUP_CFG,
+        &record) == BOARD_TEST_RESULT_PASS);
+    for(bit = 1UL; bit <= BOARD_SYSTEM_INTERRUPT_XINT_VECTOR; bit <<= 1U)
+    {
+        assert(BoardSystem_EvaluateMask(BOARD_SYSTEM_INTERRUPT_EXPECTED_MASK & ~bit,
+            BOARD_SYSTEM_INTERRUPT_EXPECTED_MASK, BOARD_TEST_ERROR_INTERRUPT_CFG,
+            &record) == BOARD_TEST_RESULT_FAIL);
+    }
+    assert(BoardSystem_EvaluateMask(BOARD_SYSTEM_INTERRUPT_EXPECTED_MASK,
+        BOARD_SYSTEM_INTERRUPT_EXPECTED_MASK, BOARD_TEST_ERROR_INTERRUPT_CFG,
+        &record) == BOARD_TEST_RESULT_PASS);
+}
+static void TestSystemTimerBoundaries(void)
+{
+    BoardTest_Record record;
+    assert(BoardSystem_EvaluateTimerDelta(0UL, 0UL, &record) == BOARD_TEST_RESULT_FAIL);
+    assert(BoardSystem_EvaluateTimerDelta(2000UL, 0xFFFFF830UL, &record) == BOARD_TEST_RESULT_PASS);
+    assert(record.rawValue == 4000UL);
+    assert(BoardSystem_EvaluateTimerDelta(2999UL, 0UL, &record) == BOARD_TEST_RESULT_FAIL);
+    assert(BoardSystem_EvaluateTimerDelta(3000UL, 0UL, &record) == BOARD_TEST_RESULT_PASS);
+    assert(BoardSystem_EvaluateTimerDelta(20000UL, 0UL, &record) == BOARD_TEST_RESULT_PASS);
+    assert(BoardSystem_EvaluateTimerDelta(20001UL, 0UL, &record) == BOARD_TEST_RESULT_FAIL);
+}
 static void TestTmp116Evaluation(void)
 {
     BoardTest_Record record;
@@ -2457,6 +2491,8 @@ int main(void)
     TestProgramLedEvaluation();
     TestSystemMaskEvaluation();
     TestSystemTimerEvaluation();
+    TestSystemTimerBoundaries();
+    TestCoreConfigurationMasks();
     TestTmp116Evaluation();
     TestSciLoopbackEvaluation();
     TestSciRs485ExternalEvaluation();

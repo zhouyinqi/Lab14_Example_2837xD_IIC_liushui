@@ -610,13 +610,13 @@ MainWindow::MainWindow(QWidget *parent)
     resize(qMin(1000, qMax(780, availableGeometry.width() - 40)),
            qMin(850, qMax(600, availableGeometry.height() - 60)));
 
-    addTest(0x0100, QStringLiteral("SYS_STARTUP"), RefreshScope::Board);
-    addTest(0x0101, QStringLiteral("SYS_CLOCK"), RefreshScope::Board);
-    addTest(0x0102, QStringLiteral("SYS_INTERRUPT"), RefreshScope::Board);
+    addTest(0x0100, QStringLiteral("SYS_STARTUP / 启动配置"), RefreshScope::Board);
+    addTest(0x0101, QStringLiteral("SYS_CLOCK / 时钟配置"), RefreshScope::Board);
+    addTest(0x0102, QStringLiteral("SYS_INTERRUPT / PIE配置"), RefreshScope::Board);
     addTest(0x0103, QStringLiteral("SYS_TIMER"), RefreshScope::Board);
-    addTest(0x0104, QStringLiteral("SYS_WATCHDOG"), RefreshScope::Board);
-    addTest(0x0105, QStringLiteral("RAM"), RefreshScope::Board);
-    addTest(0x0106, QStringLiteral("FLASH"), RefreshScope::Board);
+    addTest(0x0104, QStringLiteral("SYS_WATCHDOG / 禁用状态"), RefreshScope::Board);
+    addTest(0x0105, QStringLiteral("RAM / 专用测试区"), RefreshScope::Board);
+    addTest(0x0106, QStringLiteral("FLASH / 配置检查"), RefreshScope::Board);
     addTest(0x0200, QStringLiteral("GPIO"), RefreshScope::Board);
     addTest(0x0201, QStringLiteral("ADC_BASIC"), RefreshScope::Board);
     addTest(0x0202, QStringLiteral("PWM_BASIC"), RefreshScope::Board);

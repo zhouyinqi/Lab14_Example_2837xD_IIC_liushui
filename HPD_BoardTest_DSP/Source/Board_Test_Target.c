@@ -963,10 +963,10 @@ BoardTest_Result BoardTest_TargetExecute(BoardTest_U16 testId,
     switch(testId)
     {
         case BOARD_TEST_ID_SYS_STARTUP:
-            record->measuredValue = 1.0F;
-            record->expectedMin = 1.0F;
-            record->expectedMax = 1.0F;
-            return BOARD_TEST_RESULT_PASS;
+            return BoardSystem_RunStartupTest(record);
+
+        case BOARD_TEST_ID_SYS_INTERRUPT:
+            return BoardSystem_RunInterruptConfigTest(record);
 
         case BOARD_TEST_ID_SYS_CLOCK:
             return BoardSystem_RunClockTest(record);

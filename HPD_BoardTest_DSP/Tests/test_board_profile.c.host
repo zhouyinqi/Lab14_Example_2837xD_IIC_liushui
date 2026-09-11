@@ -89,6 +89,14 @@ static void TestKnownHardwareMatrix(void)
     assert(hardware->hardwareRevision ==
            BOARD_PROFILE_HARDWARE_REVISION_LOW_VOLTAGE_V04);
     assert(hardware->pinMapRevision == 4U);
+    assert(BoardProfile_GetTestAvailability(BOARD_TEST_ID_SYS_STARTUP,
+        BOARD_TEST_CAP_IMPLEMENTED) == BOARD_PROFILE_TEST_PENDING_VALIDATION);
+    assert(BoardProfile_GetTestAvailability(BOARD_TEST_ID_SYS_CLOCK,
+        BOARD_TEST_CAP_IMPLEMENTED) == BOARD_PROFILE_TEST_PENDING_VALIDATION);
+    assert(BoardProfile_GetTestAvailability(BOARD_TEST_ID_SYS_TIMER,
+        BOARD_TEST_CAP_IMPLEMENTED) == BOARD_PROFILE_TEST_PENDING_VALIDATION);
+    assert(BoardProfile_GetTestAvailability(BOARD_TEST_ID_SYS_INTERRUPT,
+        0U) == BOARD_PROFILE_TEST_PENDING_DEVELOPMENT);
     assert(hardware->pins.ethernetInterrupt == 0U);
     assert(hardware->pins.ethernetReset == 1U);
     assert(hardware->pins.canBTransmit == 6U);

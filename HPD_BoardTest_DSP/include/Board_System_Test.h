@@ -25,6 +25,21 @@
 #define BOARD_SYSTEM_WATCHDOG_DISABLED   0x0001UL
 #define BOARD_SYSTEM_RAM_WORD_COUNT      64U
 
+/* Configuration/health check, not an independent frequency measurement.
+ * Allow instruction overhead/interrupt latency up to 100 us. */
+#define BOARD_SYSTEM_TIMER_MIN_TICKS     3000UL
+#define BOARD_SYSTEM_TIMER_MAX_TICKS     20000UL
+
+#define BOARD_SYSTEM_STARTUP_CPU1        0x0001UL
+#define BOARD_SYSTEM_STARTUP_PIE_READY   0x0002UL
+#define BOARD_SYSTEM_STARTUP_PLL_LOCKED  0x0004UL
+#define BOARD_SYSTEM_STARTUP_WD_DISABLED 0x0008UL
+#define BOARD_SYSTEM_STARTUP_EXPECTED_MASK 0x000FUL
+#define BOARD_SYSTEM_INTERRUPT_PIE_ENABLED 0x0001UL
+#define BOARD_SYSTEM_INTERRUPT_TIMER_VECTOR 0x0002UL
+#define BOARD_SYSTEM_INTERRUPT_XINT_VECTOR 0x0004UL
+#define BOARD_SYSTEM_INTERRUPT_EXPECTED_MASK 0x0007UL
+
 BoardTest_Result BoardSystem_EvaluateMask(BoardTest_U32 actualMask,
                                            BoardTest_U32 expectedMask,
                                            BoardTest_U16 errorCode,
@@ -34,6 +49,9 @@ BoardTest_Result BoardSystem_EvaluateTimerDelta(BoardTest_U32 beforeCount,
                                                  BoardTest_Record *record);
 
 #ifndef BOARD_TEST_HOST
+void BoardSystem_CaptureStartupState(void);
+BoardTest_Result BoardSystem_RunStartupTest(BoardTest_Record *record);
+BoardTest_Result BoardSystem_RunInterruptConfigTest(BoardTest_Record *record);
 BoardTest_Result BoardSystem_RunClockTest(BoardTest_Record *record);
 BoardTest_Result BoardSystem_RunTimerTest(BoardTest_Record *record);
 BoardTest_Result BoardSystem_RunWatchdogTest(BoardTest_Record *record);

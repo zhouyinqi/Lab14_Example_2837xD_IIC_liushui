@@ -9,6 +9,7 @@
 #include "F28x_Project.h"     // Device Headerfile and Examples Include File
 #include "Board_Gpio_Test.h"
 #include "Board_Profile.h"
+#include "Board_System_Test.h"
 #include "Board_Test.h"
 #include "Board_Test_Target.h"
 
@@ -79,6 +80,7 @@ void main(void)
    BoardTest_Init();
    /* The listener detects W5300 or W5500 before the host confirms a board. */
    BoardProfile_Init(BOARD_PROFILE_ETHERNET_NONE);
+   BoardSystem_CaptureStartupState();
 
 
 

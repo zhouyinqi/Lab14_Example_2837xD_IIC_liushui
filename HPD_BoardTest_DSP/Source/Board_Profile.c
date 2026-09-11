@@ -890,6 +890,11 @@ BoardProfile_TestAvailability BoardProfile_GetTestAvailability(
 
     if(BoardProfile_IsCoreIndependentTest(testId) != 0U)
     {
+        /* Reusing CPU tests does not validate a new physical board. */
+        if(hardware->boardId == BOARD_PROFILE_ID_LOW_VOLTAGE_INVERTER)
+        {
+            return BOARD_PROFILE_TEST_PENDING_VALIDATION;
+        }
         return BOARD_PROFILE_TEST_TESTABLE;
     }
 

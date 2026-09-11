@@ -28,24 +28,21 @@ BoardTest_Result BoardSystem_EvaluateTimerDelta(BoardTest_U32 beforeCount,
                                                  BoardTest_U32 afterCount,
                                                  BoardTest_Record *record)
 {
-    BoardTest_U32 delta = 0UL;
+    /* Timer0 runs at 200 MHz over a 20 us delay. Use modulo-32
+     * subtraction, including on hosts whose unsigned long is wider. */
+    BoardTest_U32 delta = (beforeCount - afterCount) & 0xFFFFFFFFUL;
 
-    if(beforeCount > afterCount)
+    record->rawValue = delta;
+    record->measuredValue = (float)delta;
+    record->expectedMin = (float)BOARD_SYSTEM_TIMER_MIN_TICKS;
+    record->expectedMax = (float)BOARD_SYSTEM_TIMER_MAX_TICKS;
+    if((delta >= BOARD_SYSTEM_TIMER_MIN_TICKS) &&
+       (delta <= BOARD_SYSTEM_TIMER_MAX_TICKS))
     {
-        delta = beforeCount - afterCount;
-        record->rawValue = delta;
-        record->measuredValue = (float)delta;
-        record->expectedMin = 1.0F;
-        record->expectedMax = 4294967295.0F;
         record->errorCode = BOARD_TEST_ERROR_NONE;
         return BOARD_TEST_RESULT_PASS;
     }
 
-    record->rawValue = ((beforeCount & 0xFFFF0000UL) |
-                        (afterCount & 0x0000FFFFUL));
-    record->measuredValue = 0.0F;
-    record->expectedMin = 1.0F;
-    record->expectedMax = 4294967295.0F;
     record->errorCode = BOARD_TEST_ERROR_SYS_TIMER;
     return BOARD_TEST_RESULT_FAIL;
 }
@@ -56,6 +53,44 @@ BoardTest_Result BoardSystem_EvaluateTimerDelta(BoardTest_U32 beforeCount,
 #define BOARD_SYSTEM_TIMER_PERIOD     0xFFFFFFFFUL
 
 static volatile Uint32 BoardSystem_RamScratch[BOARD_SYSTEM_RAM_WORD_COUNT];
+static BoardTest_U32 BoardSystem_StartupMask = 0UL;
+
+void BoardSystem_CaptureStartupState(void)
+{
+    BoardSystem_StartupMask = 0UL;
+#ifdef CPU1
+    BoardSystem_StartupMask |= BOARD_SYSTEM_STARTUP_CPU1;
+#endif
+    if(PieCtrlRegs.PIECTRL.bit.ENPIE == 1U)
+        BoardSystem_StartupMask |= BOARD_SYSTEM_STARTUP_PIE_READY;
+    if(ClkCfgRegs.SYSPLLSTS.bit.LOCKS == 1U)
+        BoardSystem_StartupMask |= BOARD_SYSTEM_STARTUP_PLL_LOCKED;
+    if(WdRegs.WDCR.bit.WDDIS == 1U)
+        BoardSystem_StartupMask |= BOARD_SYSTEM_STARTUP_WD_DISABLED;
+}
+
+BoardTest_Result BoardSystem_RunStartupTest(BoardTest_Record *record)
+{
+    return BoardSystem_EvaluateMask(BoardSystem_StartupMask,
+        BOARD_SYSTEM_STARTUP_EXPECTED_MASK,
+        BOARD_TEST_ERROR_STARTUP_CFG, record);
+}
+
+BoardTest_Result BoardSystem_RunInterruptConfigTest(BoardTest_Record *record)
+{
+    BoardTest_U32 status = 0UL;
+    /* Read-only configuration check. Does not claim ISR delivery or XINT
+     * wiring validation, and does not replace live interrupt vectors. */
+    if(PieCtrlRegs.PIECTRL.bit.ENPIE == 1U)
+        status |= BOARD_SYSTEM_INTERRUPT_PIE_ENABLED;
+    if(PieVectTable.TIMER0_INT != 0)
+        status |= BOARD_SYSTEM_INTERRUPT_TIMER_VECTOR;
+    if(PieVectTable.XINT1_INT != 0)
+        status |= BOARD_SYSTEM_INTERRUPT_XINT_VECTOR;
+    return BoardSystem_EvaluateMask(status,
+        BOARD_SYSTEM_INTERRUPT_EXPECTED_MASK,
+        BOARD_TEST_ERROR_INTERRUPT_CFG, record);
+}
 
 static BoardTest_U32 BoardSystem_MakeRamPattern(BoardTest_U16 index)
 {
