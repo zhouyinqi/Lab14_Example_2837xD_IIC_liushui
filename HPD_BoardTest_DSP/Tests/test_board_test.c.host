@@ -1168,6 +1168,24 @@ static void TestLowVoltageInputCapture(void)
     BoardDi_InitLowVoltageCapture(&capture, 0U);
     assert(BoardDi_UpdateLowVoltageCapture(&capture, 0U, 0UL, &record) == BOARD_TEST_RESULT_NOT_SUPPORTED);
 }
+static void TestLowVoltageStoCapture(void)
+{
+    BoardDi_LowVoltageCapture capture;
+    BoardTest_Record record;
+    BoardDi_InitLowVoltageCapture(&capture,
+        BoardDi_LowVoltageSelectionMask(BOARD_TEST_ID_LV_STO_EXTERNAL, 0U));
+    assert(BoardDi_UpdateLowVoltageCapture(&capture, 3U, 0UL, &record) == BOARD_TEST_RESULT_RUNNING);
+    assert(BoardDi_UpdateLowVoltageCapture(&capture, 2U, 1000UL, &record) == BOARD_TEST_RESULT_RUNNING);
+    assert(BoardDi_UpdateLowVoltageCapture(&capture, 2U, 30000UL, &record) == BOARD_TEST_RESULT_TIMEOUT);
+    assert(capture.transitions == 1U);
+    BoardDi_InitLowVoltageCapture(&capture, 3U);
+    assert(BoardDi_UpdateLowVoltageCapture(&capture, 3U, 0UL, &record) == BOARD_TEST_RESULT_RUNNING);
+    assert(BoardDi_UpdateLowVoltageCapture(&capture, 0U, 1000UL, &record) == BOARD_TEST_RESULT_PASS);
+    BoardDi_InitLowVoltageCapture(&capture,
+        BoardDi_LowVoltageSelectionMask(BOARD_TEST_ID_LV_STO_EXTERNAL, 2U));
+    assert(BoardDi_UpdateLowVoltageCapture(&capture, 0U, 0UL, &record) == BOARD_TEST_RESULT_RUNNING);
+    assert(BoardDi_UpdateLowVoltageCapture(&capture, 2U, 1000UL, &record) == BOARD_TEST_RESULT_PASS);
+}
 static void TestSystemTimerBoundaries(void)
 {
     BoardTest_Record record;
@@ -2609,6 +2627,7 @@ int main(void)
     TestSystemMaskEvaluation();
     TestSystemTimerEvaluation();
     TestSystemTimerBoundaries();
+    TestLowVoltageStoCapture();
     TestLowVoltageInputCapture();
     TestLowVoltageAdcMapping();
     TestSciaBoardRoutes();

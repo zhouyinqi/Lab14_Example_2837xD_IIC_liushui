@@ -73,6 +73,11 @@ public:
     QList<QByteArray> requests;
     DspTestProtocol::Result recordResult = DspTestProtocol::Result::Warn;
     quint16 recordError = 0;
+    quint16 managerMode = 1;
+    quint16 activeId = DspTestProtocol::InvalidTestId;
+    quint32 recordRaw = 0x0001000F;
+    float recordMeasured = 0.0F;
+    float recordMask = 1.0F;
 
 private:
     QByteArray makeResponse(const QByteArray &request)
@@ -84,16 +89,18 @@ private:
         frame[3] = request[3];
         frame[4] = request[4];
         frame[5] = request[5];
-        put16(frame, 10, 1); // Idle manager.
-        put16(frame, 14, DspTestProtocol::InvalidTestId);
+        put16(frame, 10, managerMode);
+        put16(frame, 14, activeId);
         put16(frame, 16, DspTestProtocol::InvalidTestId);
         const auto command = static_cast<DspTestProtocol::Command>(request[3]);
         if (command == DspTestProtocol::Command::GetRecord) {
             put16(frame, 16, qFromBigEndian<quint16>(request.data() + 8));
             put16(frame, 18, static_cast<quint16>(recordResult));
             put16(frame, 20, recordError);
-            qToBigEndian(quint32(0x0001000F), frame.data() + 22);
-            putFloat(frame, 30, 1.0F);
+            qToBigEndian(recordRaw, frame.data() + 22);
+            putFloat(frame, 26, recordMeasured);
+            putFloat(frame, 30, recordMask);
+            putFloat(frame, 34, recordMask);
         }
         if (command == DspTestProtocol::Command::GetStatus) {
             ++statusResponses;
@@ -134,6 +141,36 @@ private:
     }
 
 private slots:
+    void lowVoltageInputLiveProtocolCompletion()
+    {
+        for(quint16 testId : {quint16(0x0400), quint16(0x0403)}) {
+            MockDsp server;
+            QVERIFY(server.listen(QHostAddress::LocalHost, 0));
+            MainWindow window;
+            window.m_client.connectToDevice(QStringLiteral("127.0.0.1"), server.serverPort());
+            QTRY_VERIFY(window.m_client.isConnected());
+            window.m_boardProfileId = 2;
+            const quint16 mask = (testId == 0x0400) ? 0x3f : 3;
+            server.activeId = testId;
+            server.managerMode = 3;
+            server.recordResult = DspTestProtocol::Result::Running;
+            server.recordRaw = mask;
+            server.recordMask = mask;
+            window.prepareSingleTestRefresh(MainWindow::RefreshScope::External, testId);
+            window.m_client.startSingle(testId, DspTestProtocol::Stage::ExternalConnected, false, 0);
+            QTRY_VERIFY(window.m_protectionResetLiveTimer->isActive());
+            QTRY_VERIFY(window.m_lowVoltageInputStatus->text().contains(QStringLiteral("等待翻转")));
+            QVERIFY(window.m_singleTestRefreshPending);
+            server.recordResult = DspTestProtocol::Result::Pass;
+            server.recordRaw = (quint32(mask) << 24) | (quint32(mask) << 16) | mask;
+            server.recordMeasured = mask;
+            QTRY_VERIFY(!window.m_singleTestRefreshPending);
+            QVERIFY(!window.m_protectionResetLiveTimer->isActive());
+            QCOMPARE(resultText(window, testId), QStringLiteral("PASS"));
+            QVERIFY(window.m_lowVoltageInputStatus->text().contains(QStringLiteral("PASS")));
+            window.m_client.disconnectFromDevice();
+        }
+    }
     void lowVoltageInputSelectionAndPartialProgress()
     {
         MainWindow window;

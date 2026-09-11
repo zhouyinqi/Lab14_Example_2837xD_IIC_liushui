@@ -91,6 +91,7 @@ static const BoardProfile_Descriptor BoardProfile_Descriptors[] =
     (BOARD_PROFILE_CAP_EMIF_W5300 | \
      BOARD_PROFILE_CAP_GPIO | \
      BOARD_PROFILE_CAP_DSP_DI | \
+     BOARD_PROFILE_CAP_STO | \
      BOARD_PROFILE_CAP_ADC | \
      BOARD_PROFILE_CAP_PWM | \
      BOARD_PROFILE_CAP_CAN_B | \
