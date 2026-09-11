@@ -318,7 +318,6 @@ BoardTest_Result BoardEthernet_EvaluateW5300SocketStatus(
 }
 
 #ifndef BOARD_TEST_HOST
-extern void InitXintf16Gpio(void);
 
 static const BoardEthernet_W5300RegValue BoardEthernet_W5300CommonConfig[] =
 {
@@ -373,8 +372,7 @@ static void BoardEthernet_W5300Write(BoardTest_U16 offset,
 
 static void BoardEthernet_PrepareW5300Access(void)
 {
-    BoardEmif_ConfigureExternalAsync();
-    InitXintf16Gpio();
+    BoardEmif_ConfigureW5300Access();
 }
 
 static void BoardEthernet_W5300ConfigureCommon(void)

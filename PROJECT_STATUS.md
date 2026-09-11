@@ -17,7 +17,7 @@
 ## 正在处理
 
 - 低压工业变频器 V04 专用外设测试开发。
-- 当前开发起点已修正为核心基础测试；详见 LOW_VOLTAGE_V04_REVIEW.md。核心状态、启动快照、PIE配置、Timer回绕已修正；下一项修复EMIF过宽配置。
+- 当前开发起点已修正为核心基础测试；详见 LOW_VOLTAGE_V04_REVIEW.md。核心状态、启动快照、PIE配置、Timer回绕已修正；EMIF过宽配置已修复并通过主机测试/CCS构建，下一项为CAN/SCI/SPI。
 
 ## 下一步
 

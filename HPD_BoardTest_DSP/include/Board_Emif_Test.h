@@ -27,6 +27,9 @@ extern "C" {
      BOARD_EMIF_BASIC_PINMAP_VALID)
 
 #define BOARD_EMIF_BASIC_DIAGNOSTIC_MASK BOARD_EMIF_BASIC_REQUIRED_MASK
+#define BOARD_EMIF1_BASIC_REQUIRED_MASK \
+    (BOARD_EMIF_BASIC_REQUIRED_MASK & ~BOARD_EMIF_BASIC_EMIF2_ASYNC_CS2)
+#define BOARD_EMIF_W5300_PIN_COUNT 29U
 
 #define BOARD_EMIF_ASYNC_WIDTH_16         0x0001U
 #define BOARD_EMIF_ASYNC_TIMING_VALID     0x0002U
@@ -82,6 +85,12 @@ typedef struct
 extern volatile BoardEmif_BasicSnapshot gBoardEmifBasicSnapshot;
 extern volatile BoardEmif_SramSnapshot gBoardEmifSramSnapshot;
 
+BoardTest_U16 BoardEmif_GetW5300Pin(BoardTest_U16 index);
+BoardTest_Result BoardEmif_EvaluateBasicStatusForBus(
+    BoardTest_U16 statusMask, BoardTest_U16 emif1AsyncMask,
+    BoardTest_U16 emif2AsyncMask, BoardTest_U16 useEmif2,
+    BoardTest_Record *record);
+
 BoardTest_Result BoardEmif_EvaluateBasicStatus(BoardTest_U16 statusMask,
                                                BoardTest_U16 emif1AsyncMask,
                                                BoardTest_U16 emif2AsyncMask,
@@ -95,6 +104,7 @@ BoardTest_Result BoardEmif_EvaluateSramStatus(BoardTest_U16 statusMask,
 
 #ifndef BOARD_TEST_HOST
 void BoardEmif_ConfigureExternalAsync(void);
+void BoardEmif_ConfigureW5300Access(void);
 BoardTest_Result BoardEmif_RunBasicConfigTest(BoardTest_Record *record);
 BoardTest_Result BoardEmif_RunSramExternalTest(BoardTest_Record *record);
 #endif

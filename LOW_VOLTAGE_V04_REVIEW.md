@@ -14,7 +14,7 @@
 | RAM | 64 个 32 位专用 scratch 字，不覆盖全部 RAM | 核心基础 |
 | 片内 Flash | 检查 Flash 链接、等待周期、缓存、ECC 和电源配置，不擦写 | 核心基础 |
 | GPIO | 程序灯 GPIO3/4 读回，不证明全部端子或使能安全 | 核心基础 |
-| EMIF/W5300 | 网络初始化调用通用 InitXintf16Gpio，配置过宽；EMIF 基础原要求 EMIF2 | 通信基础优先修复 |
+| EMIF/W5300 | 已改为W5300专用29脚白名单及EMIF1-CS2，低压基础不再要求/配置EMIF2 | 通信基础优先修复 |
 | CAN-B | 已有按板型 GPIO6/7 配置与回环实现；实板待验证 | 通信基础 |
 | SCI | 内部回环已检查 A/B；SCIA 外部仍用固定系统板宏，V04 尚未开放 | 通信基础/外部通信 |
 | SPI | 内部回环及 W25Q64 ID 已实现；FRAM 保存/测试/恢复路径待复核 | 通信基础 |
@@ -25,10 +25,17 @@
 ## 复核发现
 
 - 已修复核心独立 Test ID 绕过 V04 实板状态的问题，V04 核心项保持待验证。
-- 通用 EMIF 引脚配置覆盖 GPIO35/49/50～52/86/88/89/90/91，与 V04 STO、风扇、旋变、DI、PWM 锁等用途重叠，不能直接用于 V04。
+- W5300初始化已脱离通用全总线GPIO配置；主机测试验证29脚不与V04 DI/STO/风扇/旋变/软件锁/RTC相交。SiC SRAM仍保留原全地址线配置。
 - 每项遵循：实现 → 复核 → DSP/Qt 相关回归与构建 → 更新状态 → 单独 Git 提交推送 → 下一项。
 - 实板结果不阻塞独立软件开发；缺少电气依据的输出保持未开放。
 
 ## 阅读范围
 
 已核查工程清单、板型状态与管脚矩阵、目标执行/停止路径、系统基础、GPIO、EMIF、SCI/SPI/PWM 相关实现、DI 判定框架和主机测试入口。完整逐文件阅读继续随子项开展，不能将清单扫描视为全部代码审查完成。
+
+## W5300依据
+
+- 保持既有寄存器偏移约定，使用EM1A0～A8、BA1、D0～D15、CS2/WE/OE；不改板卡地址接法。
+- WIZnet直接模式0x400地址空间：https://docs.wiznet.io/img/products/w5300/W5300_DS_V134E.pdf 。
+- TI EMIF半字地址BA1说明：https://e2e.ti.com/cfs-file/__key/communityserver-discussions-components-files/171/Technical-Reference-Manual.pdf 。
+- 主机回归及CCS Debug Flash编译链接通过；W5300连接仍需重新烧录实板复测。

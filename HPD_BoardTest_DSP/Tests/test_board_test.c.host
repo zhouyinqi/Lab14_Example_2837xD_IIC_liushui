@@ -1051,6 +1051,46 @@ static void TestCoreConfigurationMasks(void)
         BOARD_SYSTEM_INTERRUPT_EXPECTED_MASK, BOARD_TEST_ERROR_INTERRUPT_CFG,
         &record) == BOARD_TEST_RESULT_PASS);
 }
+static void TestW5300BusIsolation(void)
+{
+    BoardTest_U16 i, j, pin;
+    BoardTest_Record record;
+    const BoardProfile_HardwareDescriptor *hardware;
+    const BoardProfile_LowVoltagePinMap *lv;
+    hardware = BoardProfile_GetHardwareDescriptor(BOARD_PROFILE_ID_LOW_VOLTAGE_INVERTER,
+        BOARD_PROFILE_HARDWARE_REVISION_LOW_VOLTAGE_V04, BOARD_PROFILE_ETHERNET_EMIF_W5300);
+    assert(hardware != 0);
+    lv = hardware->lowVoltagePins;
+    for(i = 0U; i < BOARD_EMIF_W5300_PIN_COUNT; i++)
+    {
+        pin = BoardEmif_GetW5300Pin(i);
+        assert(pin != BOARD_PROFILE_PIN_UNUSED);
+        for(j = i + 1U; j < BOARD_EMIF_W5300_PIN_COUNT; j++)
+            assert(pin != BoardEmif_GetW5300Pin(j));
+        for(j = 0U; j < BOARD_PROFILE_LOW_VOLTAGE_DI_COUNT; j++)
+            assert(pin != lv->digitalInputs[j]);
+        for(j = 0U; j < BOARD_PROFILE_LOW_VOLTAGE_STO_COUNT; j++)
+            assert(pin != lv->stoInputs[j]);
+        for(j = 0U; j < BOARD_PROFILE_LOW_VOLTAGE_RESOLVER_SPI_COUNT; j++)
+            assert(pin != lv->resolverSpi[j]);
+        assert(pin != lv->fanOutput);
+        assert(pin != lv->softStartOutput);
+        assert(pin != lv->pwmSoftwareLock);
+        assert(pin != lv->protectionBreakInput);
+        assert(pin != lv->faultClearOutput);
+        assert(pin != lv->rtcSda && pin != lv->rtcScl);
+    }
+    assert(BoardEmif_GetW5300Pin(BOARD_EMIF_W5300_PIN_COUNT) == BOARD_PROFILE_PIN_UNUSED);
+    assert(BoardEmif_EvaluateBasicStatusForBus(BOARD_EMIF1_BASIC_REQUIRED_MASK,
+        BOARD_EMIF_ASYNC_REQUIRED_MASK, 0U, 0U, &record) == BOARD_TEST_RESULT_PASS);
+    assert(BoardEmif_EvaluateBasicStatusForBus(BOARD_EMIF1_BASIC_REQUIRED_MASK,
+        BOARD_EMIF_ASYNC_REQUIRED_MASK, 0U, 1U, &record) == BOARD_TEST_RESULT_FAIL);
+    assert(BoardEmif_EvaluateBasicStatusForBus(BOARD_EMIF1_BASIC_REQUIRED_MASK,
+        0U, 0U, 0U, &record) == BOARD_TEST_RESULT_FAIL);
+    assert(BoardEmif_EvaluateBasicStatusForBus(BOARD_EMIF1_BASIC_REQUIRED_MASK &
+        ~BOARD_EMIF_BASIC_EMIF1_CPU1, BOARD_EMIF_ASYNC_REQUIRED_MASK, 0U, 0U,
+        &record) == BOARD_TEST_RESULT_FAIL);
+}
 static void TestSystemTimerBoundaries(void)
 {
     BoardTest_Record record;
@@ -2492,6 +2532,7 @@ int main(void)
     TestSystemMaskEvaluation();
     TestSystemTimerEvaluation();
     TestSystemTimerBoundaries();
+    TestW5300BusIsolation();
     TestCoreConfigurationMasks();
     TestTmp116Evaluation();
     TestSciLoopbackEvaluation();

@@ -1,5 +1,6 @@
 #include "Board_Emif_Test.h"
 #include "Board_Pinmap.h"
+#include "Board_Profile.h"
 
 #ifndef BOARD_TEST_HOST
 #include "F28x_Project.h"
@@ -39,24 +40,46 @@ volatile BoardEmif_SramSnapshot gBoardEmifSramSnapshot =
     (BoardTest_U16)((BOARD_EMIF1_CS3_SRAM_TEST_WORDS >> 16U) & 0xFFFFUL)
 };
 
+BoardTest_U16 BoardEmif_GetW5300Pin(BoardTest_U16 index)
+{
+    if(index < 16U) return BOARD_PIN_EMIF1_XD(index);
+    if(index < 25U) return BOARD_PIN_EMIF1_XA(index - 16U);
+    if(index == 25U) return BOARD_PIN_EMIF1_XBA1;
+    if(index == 26U) return BOARD_PIN_EMIF1_W5300_CS2;
+    if(index == 27U) return BOARD_PIN_EMIF1_WE;
+    if(index == 28U) return BOARD_PIN_EMIF1_OE;
+    return BOARD_PROFILE_PIN_UNUSED;
+}
+
 BoardTest_Result BoardEmif_EvaluateBasicStatus(BoardTest_U16 statusMask,
                                                BoardTest_U16 emif1AsyncMask,
                                                BoardTest_U16 emif2AsyncMask,
                                                BoardTest_Record *record)
 {
+    return BoardEmif_EvaluateBasicStatusForBus(statusMask, emif1AsyncMask,
+                                              emif2AsyncMask, 1U, record);
+}
+
+BoardTest_Result BoardEmif_EvaluateBasicStatusForBus(
+    BoardTest_U16 statusMask, BoardTest_U16 emif1AsyncMask,
+    BoardTest_U16 emif2AsyncMask, BoardTest_U16 useEmif2,
+    BoardTest_Record *record)
+{
+    BoardTest_U16 requiredMask = (useEmif2 != 0U) ?
+        BOARD_EMIF_BASIC_REQUIRED_MASK : BOARD_EMIF1_BASIC_REQUIRED_MASK;
     record->rawValue = (((BoardTest_U32)statusMask & 0xFFFFUL) << 16U) |
                        (((BoardTest_U32)emif1AsyncMask & 0x00FFUL) << 8U) |
                        ((BoardTest_U32)emif2AsyncMask & 0x00FFUL);
     record->measuredValue = (float)statusMask;
-    record->expectedMin = (float)BOARD_EMIF_BASIC_REQUIRED_MASK;
-    record->expectedMax = (float)BOARD_EMIF_BASIC_DIAGNOSTIC_MASK;
+    record->expectedMin = (float)requiredMask;
+    record->expectedMax = (float)requiredMask;
 
-    if(((statusMask & BOARD_EMIF_BASIC_REQUIRED_MASK) ==
-        BOARD_EMIF_BASIC_REQUIRED_MASK) &&
+    if(((statusMask & requiredMask) == requiredMask) &&
        ((emif1AsyncMask & BOARD_EMIF_ASYNC_REQUIRED_MASK) ==
         BOARD_EMIF_ASYNC_REQUIRED_MASK) &&
-       ((emif2AsyncMask & BOARD_EMIF_ASYNC_REQUIRED_MASK) ==
-        BOARD_EMIF_ASYNC_REQUIRED_MASK))
+       ((useEmif2 == 0U) ||
+        ((emif2AsyncMask & BOARD_EMIF_ASYNC_REQUIRED_MASK) ==
+         BOARD_EMIF_ASYNC_REQUIRED_MASK)))
     {
         record->errorCode = BOARD_TEST_ERROR_NONE;
         return BOARD_TEST_RESULT_PASS;
@@ -226,6 +249,27 @@ void BoardEmif_ConfigureExternalAsync(void)
     BoardEmif_ConfigureAsyncCs2(&Emif2Regs.ASYNC_CS2_CR);
 }
 
+void BoardEmif_ConfigureW5300Access(void)
+{
+    BoardTest_U16 index;
+    BoardTest_U16 pin;
+    EALLOW;
+    CpuSysRegs.PCLKCR1.bit.EMIF1 = 1U;
+    DevCfgRegs.SOFTPRES1.bit.EMIF1 = 0U;
+    EDIS;
+    BoardEmif_SelectEmif1Cpu1();
+    BoardEmif_ConfigureAsyncCs2(&Emif1Regs.ASYNC_CS2_CR);
+    /* Preserve the established register address convention. A0..A8
+     * plus BA1 cover its 0x000..0x3ff word offsets. No CS3/CS4, upper
+     * addresses or EMIF2: these pins serve V04 DI/STO/fan/resolver. */
+    for(index = 0U; index < BOARD_EMIF_W5300_PIN_COUNT; index++)
+    {
+        pin = BoardEmif_GetW5300Pin(index);
+        GPIO_SetupPinMux(pin, GPIO_MUX_CPU1, (index == 25U) ? 3U : 2U);
+        GPIO_SetupPinOptions(pin, GPIO_INPUT, GPIO_ASYNC);
+    }
+}
+
 BoardTest_Result BoardEmif_RunBasicConfigTest(BoardTest_Record *record)
 {
     BoardTest_U16 statusMask;
@@ -233,31 +277,37 @@ BoardTest_Result BoardEmif_RunBasicConfigTest(BoardTest_Record *record)
     BoardTest_U16 emif2AsyncMask;
     BoardTest_U16 emif1MasterSelect;
     BoardTest_U16 deviceCapability;
+    BoardTest_U16 useEmif2;
 
-    BoardEmif_ConfigureExternalAsync();
+    useEmif2 = ((BoardProfile_GetEffectiveCapabilities() &
+                BOARD_PROFILE_CAP_FPGA_EMIF2) != 0UL) ? 1U : 0U;
+    if(useEmif2 != 0U) BoardEmif_ConfigureExternalAsync();
+    else BoardEmif_ConfigureW5300Access();
 
     statusMask = 0U;
     emif1AsyncMask = BoardEmif_CheckAsyncCs2(&Emif1Regs.ASYNC_CS2_CR);
-    emif2AsyncMask = BoardEmif_CheckAsyncCs2(&Emif2Regs.ASYNC_CS2_CR);
+    emif2AsyncMask = (useEmif2 != 0U) ?
+        BoardEmif_CheckAsyncCs2(&Emif2Regs.ASYNC_CS2_CR) : 0U;
     emif1MasterSelect = (BoardTest_U16)
         Emif1ConfigRegs.EMIF1MSEL.bit.MSEL_EMIF1;
     deviceCapability = (BoardTest_U16)
         ((DevCfgRegs.DC2.bit.EMIF1 & 0x0001U) |
          ((DevCfgRegs.DC2.bit.EMIF2 & 0x0001U) << 1U));
 
-    if(deviceCapability == 0x0003U)
+    if((deviceCapability & ((useEmif2 != 0U) ? 3U : 1U)) ==
+       ((useEmif2 != 0U) ? 3U : 1U))
     {
         statusMask |= BOARD_EMIF_BASIC_DEVICE_PRESENT;
     }
 
     if((CpuSysRegs.PCLKCR1.bit.EMIF1 == 1U) &&
-       (CpuSysRegs.PCLKCR1.bit.EMIF2 == 1U))
+       ((useEmif2 == 0U) || (CpuSysRegs.PCLKCR1.bit.EMIF2 == 1U)))
     {
         statusMask |= BOARD_EMIF_BASIC_CLOCKS_ENABLED;
     }
 
     if((DevCfgRegs.SOFTPRES1.bit.EMIF1 == 0U) &&
-       (DevCfgRegs.SOFTPRES1.bit.EMIF2 == 0U))
+       ((useEmif2 == 0U) || (DevCfgRegs.SOFTPRES1.bit.EMIF2 == 0U)))
     {
         statusMask |= BOARD_EMIF_BASIC_RESETS_RELEASED;
     }
@@ -280,7 +330,8 @@ BoardTest_Result BoardEmif_RunBasicConfigTest(BoardTest_Record *record)
     }
 
     if((Emif1ConfigRegs.EMIF1COMMIT.bit.COMMIT_EMIF1 == 0U) &&
-       (Emif2ConfigRegs.EMIF2COMMIT.bit.COMMIT_EMIF2 == 0U))
+       ((useEmif2 == 0U) ||
+        (Emif2ConfigRegs.EMIF2COMMIT.bit.COMMIT_EMIF2 == 0U)))
     {
         statusMask |= BOARD_EMIF_BASIC_CONFIG_UNLOCKED;
     }
@@ -296,9 +347,10 @@ BoardTest_Result BoardEmif_RunBasicConfigTest(BoardTest_Record *record)
     gBoardEmifBasicSnapshot.emif1MasterSelect = emif1MasterSelect;
     gBoardEmifBasicSnapshot.deviceCapability = deviceCapability;
 
-    return BoardEmif_EvaluateBasicStatus(statusMask,
+    return BoardEmif_EvaluateBasicStatusForBus(statusMask,
                                          emif1AsyncMask,
                                          emif2AsyncMask,
+                                         useEmif2,
                                          record);
 }
 
