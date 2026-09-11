@@ -352,6 +352,11 @@ float BoardAdc_FaultVoltageToDutyPercent(float inputVoltage)
 BoardTest_U16 BoardAdc_GetChannelCount(BoardTest_U16 boardId,
                                        BoardTest_U16 hardwareRevision)
 {
+    if((boardId == BOARD_PROFILE_ID_LOW_VOLTAGE_INVERTER) &&
+       (hardwareRevision == BOARD_PROFILE_HARDWARE_REVISION_LOW_VOLTAGE_V04))
+    {
+        return BOARD_PROFILE_LOW_VOLTAGE_ADC_COUNT;
+    }
     if((boardId == BOARD_PROFILE_ID_LOW_ALTITUDE_UNIFIED) &&
        (hardwareRevision == BOARD_PROFILE_HARDWARE_REVISION_LOW_ALTITUDE_V01))
     {
@@ -367,6 +372,7 @@ BoardTest_U16 BoardAdc_GetChannelConfig(BoardTest_U16 boardId,
                                         BoardAdc_ChannelConfig *config)
 {
     BoardTest_U16 channelCount;
+    const BoardProfile_HardwareDescriptor *hardware;
 
     if(config == 0)
     {
@@ -379,6 +385,17 @@ BoardTest_U16 BoardAdc_GetChannelConfig(BoardTest_U16 boardId,
         return 0U;
     }
 
+    if(boardId == BOARD_PROFILE_ID_LOW_VOLTAGE_INVERTER)
+    {
+        hardware = BoardProfile_GetHardwareDescriptor(boardId, hardwareRevision,
+            BOARD_PROFILE_ETHERNET_EMIF_W5300);
+        if((hardware == 0) || (hardware->lowVoltagePins == 0)) return 0U;
+        config->signalId = BOARD_ADC_LOW_VOLTAGE_SIGNAL_BASE + channelIndex;
+        config->module = hardware->lowVoltagePins->adcInputs[channelIndex].module;
+        config->channel = hardware->lowVoltagePins->adcInputs[channelIndex].channel;
+        return ((config->module <= BOARD_ADC_MODULE_D) &&
+                (config->channel <= 15U)) ? 1U : 0U;
+    }
     *config = BoardAdc_LowAltitudeChannels[channelIndex];
     return 1U;
 }
@@ -955,7 +972,7 @@ static BoardTest_U16 BoardAdc_RunConfiguredChannel(
     return (*rawValue <= BOARD_ADC_RAW_MAX) ? 1U : 0U;
 }
 
-static BoardTest_Result BoardAdc_RunLowAltitudeChannelScan(
+static BoardTest_Result BoardAdc_RunMappedChannelScan(
     const BoardProfile_HardwareDescriptor *hardware,
     BoardTest_Record *record)
 {
@@ -1050,11 +1067,10 @@ BoardTest_Result BoardAdc_RunBasicSampleTest(BoardTest_Record *record)
 
     hardware = BoardProfile_GetCurrentHardware();
     if((hardware != 0) &&
-       (hardware->boardId == BOARD_PROFILE_ID_LOW_ALTITUDE_UNIFIED) &&
-       (hardware->hardwareRevision ==
-        BOARD_PROFILE_HARDWARE_REVISION_LOW_ALTITUDE_V01))
+       (BoardAdc_GetChannelCount(hardware->boardId,
+                                hardware->hardwareRevision) != 0U))
     {
-        return BoardAdc_RunLowAltitudeChannelScan(hardware, record);
+        return BoardAdc_RunMappedChannelScan(hardware, record);
     }
 
     statusMask = BoardAdc_RunAdcaSoc0(&rawValue);

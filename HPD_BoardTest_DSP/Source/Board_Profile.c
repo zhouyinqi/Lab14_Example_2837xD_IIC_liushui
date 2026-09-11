@@ -90,6 +90,8 @@ static const BoardProfile_Descriptor BoardProfile_Descriptors[] =
 #define BOARD_PROFILE_LOW_VOLTAGE_W5300_IMPLEMENTED \
     (BOARD_PROFILE_CAP_EMIF_W5300 | \
      BOARD_PROFILE_CAP_GPIO | \
+     BOARD_PROFILE_CAP_ADC | \
+     BOARD_PROFILE_CAP_PWM | \
      BOARD_PROFILE_CAP_CAN_B | \
      BOARD_PROFILE_CAP_SCIA | \
      BOARD_PROFILE_CAP_SCIB | \

@@ -1112,6 +1112,30 @@ static void TestSciaBoardRoutes(void)
     assert(BoardSci_ResolveSciaPinConfiguration(hardware, &pins) == 1U);
     assert(pins.directionGpio == 133U && pins.txGpio == 135U && pins.rxGpio == 136U);
 }
+static void TestLowVoltageAdcMapping(void)
+{
+    static const BoardTest_U16 modules[13] = {3U,1U,0U,1U,2U,0U,0U,0U,2U,0U,0U,0U,3U};
+    static const BoardTest_U16 channels[13] = {0U,3U,15U,1U,3U,14U,1U,2U,2U,3U,4U,5U,1U};
+    BoardAdc_ChannelConfig config;
+    BoardTest_U16 i;
+    BoardTest_Record record;
+    assert(BoardAdc_GetChannelCount(2U, 4U) == 13U);
+    assert(BoardAdc_GetChannelCount(2U, 3U) == 0U);
+    for(i = 0U; i < 13U; i++)
+    {
+        assert(BoardAdc_GetChannelConfig(2U, 4U, i, &config) == 1U);
+        assert(config.module == modules[i] && config.channel == channels[i]);
+        assert(config.signalId == BOARD_ADC_LOW_VOLTAGE_SIGNAL_BASE + i);
+        assert(BoardAdc_IsExternalInjectionSignalSupported(config.signalId) == 0U);
+    }
+    assert(BoardAdc_GetChannelConfig(2U, 4U, 13U, &config) == 0U);
+    assert(BoardAdc_GetChannelConfig(2U, 3U, 0U, &config) == 0U);
+    assert(BoardAdc_GetChannelConfig(2U, 4U, 0U, 0) == 0U);
+    assert(BoardAdc_EvaluateChannelScan(BOARD_ADC_BASIC_STATUS_REQUIRED_MASK,
+        13U, 13U, BOARD_ADC_NO_FAILED_CHANNEL, &record) == BOARD_TEST_RESULT_PASS);
+    assert(BoardAdc_EvaluateChannelScan(BOARD_ADC_BASIC_STATUS_REQUIRED_MASK,
+        12U, 13U, 5U, &record) == BOARD_TEST_RESULT_FAIL);
+}
 static void TestSystemTimerBoundaries(void)
 {
     BoardTest_Record record;
@@ -2553,6 +2577,7 @@ int main(void)
     TestSystemMaskEvaluation();
     TestSystemTimerEvaluation();
     TestSystemTimerBoundaries();
+    TestLowVoltageAdcMapping();
     TestSciaBoardRoutes();
     TestW5300BusIsolation();
     TestCoreConfigurationMasks();
