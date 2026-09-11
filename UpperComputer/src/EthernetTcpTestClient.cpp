@@ -46,6 +46,7 @@ EthernetTcpTestClient::EthernetTcpTestClient(QObject *parent)
         sendEchoRequest();
     });
     connect(&m_socket, &QTcpSocket::readyRead, this, [this] {
+        if(!m_active) return;
         m_rxBuffer.append(m_socket.readAll());
         processIncomingData();
     });
@@ -69,7 +70,7 @@ EthernetTcpTestClient::EthernetTcpTestClient(QObject *parent)
             return;
         }
 
-        scheduleReconnect();
+        finish(false, QStringLiteral("TCP 应答完成前连接断开。"));
     });
     connect(&m_socket, &QTcpSocket::errorOccurred, this,
             [this](QAbstractSocket::SocketError) {
@@ -102,6 +103,7 @@ void EthernetTcpTestClient::start(const QString &host, quint16 port, Mode mode)
     m_active = true;
     m_connectedOnce = false;
     m_payloadComplete = false;
+    m_waitingForReply = false;
     m_rxBuffer.clear();
     m_socket.abort();
     m_timeoutTimer.start(mode == Mode::Stability ? StabilityTimeoutMs :
@@ -147,16 +149,26 @@ void EthernetTcpTestClient::sendEchoRequest()
         return;
     }
 
+    m_waitingForReply = true;
     m_socket.write(EchoRequest);
 }
 
 void EthernetTcpTestClient::processIncomingData()
 {
-    int responseIndex;
-
-    while((responseIndex = m_rxBuffer.indexOf(EchoResponse)) >= 0)
+    if(!m_rxBuffer.isEmpty() && !m_waitingForReply)
     {
-        m_rxBuffer.remove(0, responseIndex + EchoResponse.size());
+        finish(false, QStringLiteral("TCP 收到非请求应答。"));
+        return;
+    }
+    if(m_rxBuffer.size() >= EchoResponse.size())
+    {
+        if(m_rxBuffer != EchoResponse)
+        {
+            finish(false, QStringLiteral("TCP 应答内容或数量不匹配。"));
+            return;
+        }
+        m_rxBuffer.clear();
+        m_waitingForReply = false;
         ++m_replyCount;
         emit testProgress(QStringLiteral("TCP 应答 %1/%2：BTOK。")
                               .arg(m_replyCount)

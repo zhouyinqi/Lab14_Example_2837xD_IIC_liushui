@@ -45,4 +45,5 @@ private:
     bool m_active = false;
     bool m_connectedOnce = false;
     bool m_payloadComplete = false;
+    bool m_waitingForReply = false;
 };

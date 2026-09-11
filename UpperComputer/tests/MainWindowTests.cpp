@@ -1,4 +1,5 @@
 #include "MainWindow.h"
+#include "EthernetTcpTestClient.h"
 
 #include <QAbstractButton>
 #include <QAbstractItemView>
@@ -141,6 +142,87 @@ private:
     }
 
 private slots:
+    void ethernetSimulatedDevice_data()
+    {
+        QTest::addColumn<int>("scenario");
+        QTest::addColumn<bool>("passed");
+        QTest::newRow("link") << 0 << true;
+        QTest::newRow("fragmented-echo") << 1 << true;
+        QTest::newRow("five-exchanges") << 2 << true;
+        QTest::newRow("extra-replies") << 3 << false;
+        QTest::newRow("wrong-payload") << 4 << false;
+        QTest::newRow("disconnect") << 5 << false;
+        QTest::newRow("silent-timeout") << 6 << false;
+    }
+
+    void ethernetSimulatedDevice()
+    {
+        QFETCH(int, scenario);
+        QFETCH(bool, passed);
+        QTcpServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost, 0));
+        int requestCount = 0;
+        connect(&server, &QTcpServer::newConnection, &server, [&] {
+            auto *peer = server.nextPendingConnection();
+            if(scenario == 0) {
+                peer->disconnectFromHost();
+                return;
+            }
+            connect(peer, &QTcpSocket::readyRead, peer, [&, peer] {
+                auto pending = peer->property("pending").toByteArray();
+                pending += peer->readAll();
+                if(pending.size() < 4) {
+                    peer->setProperty("pending", pending);
+                    return;
+                }
+                QCOMPARE(pending, QByteArray("BTST"));
+                peer->setProperty("pending", QByteArray());
+                ++requestCount;
+                if(scenario == 1) {
+                    peer->write("BT");
+                    QTimer::singleShot(10, peer, [peer] { peer->write("OK"); });
+                } else if(scenario == 2) {
+                    peer->write("BTOK");
+                } else if(scenario == 3) {
+                    peer->write("BTOKBTOKBTOKBTOKBTOK");
+                } else if(scenario == 4) {
+                    peer->write("FAIL");
+                } else if(scenario == 5) {
+                    peer->disconnectFromHost();
+                }
+            });
+        });
+        EthernetTcpTestClient client;
+        QSignalSpy finished(&client, &EthernetTcpTestClient::testFinished);
+        const auto mode = scenario == 0 ? EthernetTcpTestClient::Mode::Link :
+            (scenario == 2 || scenario == 3 ? EthernetTcpTestClient::Mode::Stability :
+                                              EthernetTcpTestClient::Mode::Echo);
+        client.start(QStringLiteral("127.0.0.1"), server.serverPort(), mode);
+        QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 6500);
+        QCOMPARE(finished.first().at(0).toBool(), passed);
+        QVERIFY(!client.isActive());
+        if(scenario == 2) QCOMPARE(requestCount, 5);
+    }
+
+    void ethernetCancelAndRepeat()
+    {
+        QTcpServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost, 0));
+        EthernetTcpTestClient client;
+        QSignalSpy finished(&client, &EthernetTcpTestClient::testFinished);
+        for(int run = 0; run < 2; ++run) {
+            client.start(QStringLiteral("127.0.0.1"), server.serverPort(),
+                         EthernetTcpTestClient::Mode::Echo);
+            QVERIFY(client.isActive());
+            client.cancel();
+            QCOMPARE(finished.count(), run + 1);
+            QVERIFY(!finished.last().at(0).toBool());
+            QVERIFY(!client.isActive());
+        }
+        QTest::qWait(150);
+        QCOMPARE(finished.count(), 2);
+    }
+
     void lowVoltageInputLiveProtocolCompletion()
     {
         for(quint16 testId : {quint16(0x0400), quint16(0x0403)}) {
